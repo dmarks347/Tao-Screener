@@ -5,7 +5,11 @@ Calculates all required technical indicators
 
 import pandas as pd
 import numpy as np
-import talib
+try:
+    import talib
+    TALIB_AVAILABLE = True
+except ImportError:
+    TALIB_AVAILABLE = False
 from typing import Dict, Tuple, Optional
 import logging
 
@@ -17,70 +21,78 @@ class TechnicalAnalysis:
     @staticmethod
     def calculate_ema(data: pd.Series, period: int) -> pd.Series:
         """Calculate Exponential Moving Average"""
-        try:
-            return talib.EMA(data.values, timeperiod=period)
-        except:
-            # Fallback calculation if talib fails
-            return data.ewm(span=period, adjust=False).mean()
+        if TALIB_AVAILABLE:
+            try:
+                return talib.EMA(data.values, timeperiod=period)
+            except:
+                pass
+        # Fallback calculation if talib fails or unavailable
+        return data.ewm(span=period, adjust=False).mean()
     
     @staticmethod
     def calculate_rsi(data: pd.Series, period: int = 14) -> pd.Series:
         """Calculate Relative Strength Index"""
-        try:
-            return talib.RSI(data.values, timeperiod=period)
-        except:
-            # Fallback calculation
-            delta = data.diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-            rs = gain / loss
-            return 100 - (100 / (1 + rs))
+        if TALIB_AVAILABLE:
+            try:
+                return talib.RSI(data.values, timeperiod=period)
+            except:
+                pass
+        # Fallback calculation
+        delta = data.diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+        rs = gain / loss
+        return 100 - (100 / (1 + rs))
     
     @staticmethod
     def calculate_stochastic(high: pd.Series, low: pd.Series, close: pd.Series, 
                            k_period: int = 14, d_period: int = 3) -> Tuple[pd.Series, pd.Series]:
         """Calculate Stochastic Oscillator"""
-        try:
-            slowk, slowd = talib.STOCH(high.values, low.values, close.values,
-                                     fastk_period=k_period, slowk_period=d_period, 
-                                     slowd_period=d_period)
-            return pd.Series(slowk, index=close.index), pd.Series(slowd, index=close.index)
-        except:
-            # Fallback calculation
-            lowest_low = low.rolling(window=k_period).min()
-            highest_high = high.rolling(window=k_period).max()
-            k_percent = 100 * ((close - lowest_low) / (highest_high - lowest_low))
-            d_percent = k_percent.rolling(window=d_period).mean()
-            return k_percent, d_percent
+        if TALIB_AVAILABLE:
+            try:
+                slowk, slowd = talib.STOCH(high.values, low.values, close.values,
+                                         fastk_period=k_period, slowk_period=d_period, 
+                                         slowd_period=d_period)
+                return pd.Series(slowk, index=close.index), pd.Series(slowd, index=close.index)
+            except:
+                pass
+        # Fallback calculation
+        lowest_low = low.rolling(window=k_period).min()
+        highest_high = high.rolling(window=k_period).max()
+        k_percent = 100 * ((close - lowest_low) / (highest_high - lowest_low))
+        d_percent = k_percent.rolling(window=d_period).mean()
+        return k_percent, d_percent
     
     @staticmethod
     def calculate_adx(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> pd.Series:
         """Calculate Average Directional Index"""
-        try:
-            return talib.ADX(high.values, low.values, close.values, timeperiod=period)
-        except:
-            # Fallback calculation (simplified)
-            tr1 = high - low
-            tr2 = abs(high - close.shift())
-            tr3 = abs(low - close.shift())
-            tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-            
-            plus_dm = high.diff()
-            minus_dm = low.diff() * -1
-            plus_dm[plus_dm < 0] = 0
-            minus_dm[minus_dm < 0] = 0
-            
-            tr_smooth = tr.rolling(window=period).mean()
-            plus_dm_smooth = plus_dm.rolling(window=period).mean()
-            minus_dm_smooth = minus_dm.rolling(window=period).mean()
-            
-            plus_di = 100 * (plus_dm_smooth / tr_smooth)
-            minus_di = 100 * (minus_dm_smooth / tr_smooth)
-            
-            dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di)
-            adx = dx.rolling(window=period).mean()
-            
-            return adx
+        if TALIB_AVAILABLE:
+            try:
+                return talib.ADX(high.values, low.values, close.values, timeperiod=period)
+            except:
+                pass
+        # Fallback calculation (simplified)
+        tr1 = high - low
+        tr2 = abs(high - close.shift())
+        tr3 = abs(low - close.shift())
+        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        
+        plus_dm = high.diff()
+        minus_dm = low.diff() * -1
+        plus_dm[plus_dm < 0] = 0
+        minus_dm[minus_dm < 0] = 0
+        
+        tr_smooth = tr.rolling(window=period).mean()
+        plus_dm_smooth = plus_dm.rolling(window=period).mean()
+        minus_dm_smooth = minus_dm.rolling(window=period).mean()
+        
+        plus_di = 100 * (plus_dm_smooth / tr_smooth)
+        minus_di = 100 * (minus_dm_smooth / tr_smooth)
+        
+        dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di)
+        adx = dx.rolling(window=period).mean()
+        
+        return adx
     
     @staticmethod
     def check_ema_sequence(data: pd.DataFrame, bullish: bool = True) -> pd.Series:

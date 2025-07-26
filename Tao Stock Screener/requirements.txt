@@ -8,7 +8,7 @@ yfinance>=0.2.0
 requests>=2.31.0
 
 # Technical analysis
-talib-binary>=0.4.25  # For Windows users, use TA-Lib>=0.4.25 on Linux/Mac
+# TA-Lib>=0.4.25  # Commented out - requires C++ build tools on Windows
 pandas-ta>=0.3.14b
 
 # Visualization
@@ -22,7 +22,7 @@ python-dotenv>=1.0.0
 openpyxl>=3.1.0  # For Excel export support
 
 # Webull API (official SDK)
-webull>=1.0.0
+webull>=0.6.1
 
 # Development dependencies (optional)
 # pytest>=7.4.0
