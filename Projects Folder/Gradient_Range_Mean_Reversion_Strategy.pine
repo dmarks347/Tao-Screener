@@ -1,0 +1,301 @@
+//@version=6
+strategy("Gradient Range Mean Reversion Strategy", overlay=true, max_lines_count=500, default_qty_type=strategy.percent_of_equity, default_qty_value=100)
+
+// =============================================================================
+// INPUTS
+// =============================================================================
+
+// Market State Inputs
+ranging_sensitivity = input.int(35, "Ranging Sensitivity (ADX)", minval=10, maxval=100, step=1, group="Market State")
+box_size = input.int(200, "Box Size (Candles)", minval=50, maxval=500, step=1, group="Market State")
+
+// Trade Management Inputs
+sl_buffer_ticks = input.int(0, "Stop Loss Buffer (Ticks)", minval=0, maxval=50, step=1, group="Risk Management")
+entry_monitor_bars = input.int(3, "Entry Monitor Bars", minval=1, maxval=10, step=1, group="Entry Logic")
+tp_multiple = input.float(2.0, "Take Profit Multiple", minval=0.5, maxval=10.0, step=0.1, group="Risk Management", tooltip="Take Profit as multiple of Stop Loss distance")
+
+// Trading Time Inputs
+trade_start_time = input.string("02:00", "Trade Start Time", options=["00:00", "00:15", "00:30", "00:45", "01:00", "01:15", "01:30", "01:45", "02:00", "02:15", "02:30", "02:45", "03:00", "03:15", "03:30", "03:45", "04:00", "04:15", "04:30", "04:45", "05:00", "05:15", "05:30", "05:45", "06:00", "06:15", "06:30", "06:45", "07:00", "07:15", "07:30", "07:45", "08:00", "08:15", "08:30", "08:45", "09:00", "09:15", "09:30", "09:45", "10:00", "10:15", "10:30", "10:45", "11:00", "11:15", "11:30", "11:45", "12:00", "12:15", "12:30", "12:45", "13:00", "13:15", "13:30", "13:45", "14:00", "14:15", "14:30", "14:45", "15:00", "15:15", "15:30", "15:45", "16:00", "16:15", "16:30", "16:45", "17:00", "17:15", "17:30", "17:45", "18:00", "18:15", "18:30", "18:45", "19:00", "19:15", "19:30", "19:45", "20:00", "20:15", "20:30", "20:45", "21:00", "21:15", "21:30", "21:45", "22:00", "22:15", "22:30", "22:45", "23:00", "23:15", "23:30", "23:45"], group="Trading Hours")
+trade_end_time = input.string("15:00", "Trade End Time", options=["00:00", "00:15", "00:30", "00:45", "01:00", "01:15", "01:30", "01:45", "02:00", "02:15", "02:30", "02:45", "03:00", "03:15", "03:30", "03:45", "04:00", "04:15", "04:30", "04:45", "05:00", "05:15", "05:30", "05:45", "06:00", "06:15", "06:30", "06:45", "07:00", "07:15", "07:30", "07:45", "08:00", "08:15", "08:30", "08:45", "09:00", "09:15", "09:30", "09:45", "10:00", "10:15", "10:30", "10:45", "11:00", "11:15", "11:30", "11:45", "12:00", "12:15", "12:30", "12:45", "13:00", "13:15", "13:30", "13:45", "14:00", "14:15", "14:30", "14:45", "15:00", "15:15", "15:30", "15:45", "16:00", "16:15", "16:30", "16:45", "17:00", "17:15", "17:30", "17:45", "18:00", "18:15", "18:30", "18:45", "19:00", "19:15", "19:30", "19:45", "20:00", "20:15", "20:30", "20:45", "21:00", "21:15", "21:30", "21:45", "22:00", "22:15", "22:30", "22:45", "23:00", "23:15", "23:30", "23:45"], group="Trading Hours")
+
+// =============================================================================
+// VARIABLES
+// =============================================================================
+
+// Arrays for historical data
+var float[] H = array.new<float>()
+var chart.point[] points = array.new<chart.point>()
+var float[] values = array.new<float>()
+
+// Market state variables
+var bool ranging = false
+var float range_high = na
+var float range_low = na
+var float range_midline = na
+var bool range_valid = false
+var float range_size_pct = 0.0
+var float min_range_pct = 0.01
+
+// Circle tracking variables
+var bool top_circle_detected = false
+var bool bottom_circle_detected = false
+var int circle_bar = -1
+var string circle_type = na
+
+// Entry monitoring variables
+var bool monitoring_entry = false
+var int bars_since_circle = 0
+var string pending_direction = na
+
+// Trade variables
+var float entry_price = na
+var float stop_loss = na
+var float take_profit = na
+var int trade_id = 0
+
+// =============================================================================
+// FUNCTIONS
+// =============================================================================
+
+// Convert time string to minutes since midnight
+time_to_minutes(time_str) =>
+    hour_str = str.substring(time_str, 0, 2)
+    minute_str = str.substring(time_str, 3, 5)
+    hour_val = str.tonumber(hour_str)
+    minute_val = str.tonumber(minute_str)
+    hour_val * 60 + minute_val
+
+// Check if current time is within trading hours
+is_trading_time() =>
+    current_hour = hour(time, "America/New_York")
+    current_minute = minute(time, "America/New_York")
+    current_minutes = current_hour * 60 + current_minute
+    
+    start_minutes = time_to_minutes(trade_start_time)
+    end_minutes = time_to_minutes(trade_end_time)
+    
+    if start_minutes <= end_minutes
+        current_minutes >= start_minutes and current_minutes <= end_minutes
+    else
+        current_minutes >= start_minutes or current_minutes <= end_minutes
+
+// Check if it's time to close all trades
+is_closeout_time() =>
+    current_hour = hour(time, "America/New_York")
+    current_minute = minute(time, "America/New_York")
+    current_minutes = current_hour * 60 + current_minute
+    
+    closeout_minutes = 15 * 60 + 50  // 3:50 PM
+    current_minutes >= closeout_minutes
+
+// Find recent low/high for stop loss calculation
+get_recent_low(lookback) =>
+    recent_low = low[0]
+    max_lookback = math.min(lookback, bar_index)
+    for i = 1 to max_lookback
+        if low[i] < recent_low
+            recent_low := low[i]
+    recent_low
+
+get_recent_high(lookback) =>
+    recent_high = high[0]
+    max_lookback = math.min(lookback, bar_index)
+    for i = 1 to max_lookback
+        if high[i] > recent_high
+            recent_high := high[i]
+    recent_high
+
+// =============================================================================
+// MAIN LOGIC
+// =============================================================================
+
+// Calculate market state
+[_, _, adx] = ta.dmi(14, 17)
+ranging := adx <= ranging_sensitivity
+
+// Update historical data arrays
+if barstate.isconfirmed
+    array.clear(H)
+    max_bars = math.min(box_size, bar_index)  // Use the actual box_size input
+    for i = 0 to max_bars
+        array.push(H, close[i])
+
+// Calculate range values
+if array.size(H) > 0
+    range_high := array.max(H)
+    range_low := array.min(H)
+    range_midline := (range_high + range_low) / 2
+    
+    // Calculate range size as percentage of current price
+    range_size_pct := ((range_high - range_low) / close[0]) * 100
+    
+    // Only allow trading if range is large enough
+    range_valid := range_size_pct >= min_range_pct
+
+// Detect mean reversion circles (only when no position is open AND market is ranging AND range is valid)
+if barstate.isconfirmed and strategy.position_size == 0 and is_trading_time() and ranging and range_valid
+    // Clear previous circle detections
+    top_circle_detected := false
+    bottom_circle_detected := false
+    
+    // Check for top circle (price breaks above range then returns)
+    if high[1] > range_high and high[0] < range_high
+        top_circle_detected := true
+        circle_bar := bar_index
+        circle_type := "top"
+    
+    // Check for bottom circle (price breaks below range then returns)
+    if low[1] < range_low and low[0] > range_low
+        bottom_circle_detected := true
+        circle_bar := bar_index
+        circle_type := "bottom"
+
+// Add debugging for when conditions aren't met
+if barstate.isconfirmed and strategy.position_size == 0 and is_trading_time() and ranging
+    if not range_valid
+        label.new(bar_index, close[0], "NO TRADE: Range too small\n" + str.tostring(range_size_pct, "#.##") + "% < " + str.tostring(min_range_pct) + "%", 
+                 color=color.gray, textcolor=color.white, style=label.style_label_center)
+    else if high[1] > range_high and high[0] < range_high
+        label.new(bar_index, high[0], "TOP CIRCLE DETECTED\nWaiting for bearish candle", 
+                 color=color.yellow, textcolor=color.black, style=label.style_label_down)
+    else if low[1] < range_low and low[0] > range_low
+        label.new(bar_index, low[0], "BOTTOM CIRCLE DETECTED\nWaiting for bullish candle", 
+                 color=color.yellow, textcolor=color.black, style=label.style_label_up)
+
+// Monitor for entry conditions (only if market is ranging AND range is valid)
+if (top_circle_detected or bottom_circle_detected) and not monitoring_entry and strategy.position_size == 0 and ranging and range_valid
+    monitoring_entry := true
+    bars_since_circle := 0
+    if top_circle_detected
+        pending_direction := "short"  // Top circle = Short trade
+    else
+        pending_direction := "long"   // Bottom circle = Long trade
+
+// Check entry validation (only if market is still ranging AND within trading hours AND range is valid)
+if monitoring_entry and strategy.position_size == 0 and ranging and is_trading_time() and range_valid
+    bars_since_circle := bars_since_circle + 1
+    
+    // Check if we've exceeded the monitor period
+    if bars_since_circle > entry_monitor_bars
+        monitoring_entry := false
+        pending_direction := na
+    
+    // Check for valid entry candle
+    else if bars_since_circle >= 1
+        if pending_direction == "long" and close[0] > open[0]  // Bullish candle for long
+            // Calculate stop loss and take profit
+            recent_low = get_recent_low(5)
+            stop_loss := recent_low - (sl_buffer_ticks * syminfo.mintick)
+            risk_distance = close[0] - stop_loss
+            take_profit := close[0] + (risk_distance * tp_multiple)
+            
+            // Add detailed debug label for long entry attempt
+            debug_text = "LONG ENTRY ATTEMPT\nEntry: " + str.tostring(close[0]) + "\nRecent Low: " + str.tostring(recent_low) + "\nSL: " + str.tostring(stop_loss) + "\nTP: " + str.tostring(take_profit)
+            label.new(bar_index, low[0], debug_text, color=color.lime, textcolor=color.black, style=label.style_label_up)
+            
+            // Only enter if stop loss is below entry and take profit is above entry
+            if stop_loss < close[0] and take_profit > close[0]
+                // Enter long on next open
+                strategy.entry("Long_" + str.tostring(trade_id), strategy.long, comment="Gradient Range Long")
+                strategy.exit("LongExit_" + str.tostring(trade_id), "Long_" + str.tostring(trade_id), stop=stop_loss, limit=take_profit)
+                
+                trade_id := trade_id + 1
+                monitoring_entry := false
+                pending_direction := na
+            else
+                // Cancel entry if conditions not met
+                cancel_reason = stop_loss >= close[0] ? "SL above entry" : "TP below entry"
+                label.new(bar_index, high[0], "LONG CANCELLED\n" + cancel_reason, color=color.orange, textcolor=color.black, style=label.style_label_down)
+                monitoring_entry := false
+                pending_direction := na
+            
+        else if pending_direction == "short" and close[0] < open[0]  // Bearish candle for short
+            // Calculate stop loss and take profit
+            recent_high = get_recent_high(5)
+            stop_loss := recent_high + (sl_buffer_ticks * syminfo.mintick)
+            risk_distance = stop_loss - close[0]
+            take_profit := close[0] - (risk_distance * tp_multiple)
+            
+            // Add detailed debug label for short entry attempt
+            debug_text = "SHORT ENTRY ATTEMPT\nEntry: " + str.tostring(close[0]) + "\nRecent High: " + str.tostring(recent_high) + "\nSL: " + str.tostring(stop_loss) + "\nTP: " + str.tostring(take_profit)
+            label.new(bar_index, high[0], debug_text, color=color.red, textcolor=color.white, style=label.style_label_down)
+            
+            // Only enter if stop loss is above entry and take profit is below entry
+            if stop_loss > close[0] and take_profit < close[0]
+                // Enter short on next open
+                strategy.entry("Short_" + str.tostring(trade_id), strategy.short, comment="Gradient Range Short")
+                strategy.exit("ShortExit_" + str.tostring(trade_id), "Short_" + str.tostring(trade_id), stop=stop_loss, limit=take_profit)
+                
+                trade_id := trade_id + 1
+                monitoring_entry := false
+                pending_direction := na
+            else
+                // Cancel entry if conditions not met
+                cancel_reason = stop_loss <= close[0] ? "SL below entry" : "TP above entry"
+                label.new(bar_index, low[0], "SHORT CANCELLED\n" + cancel_reason, color=color.orange, textcolor=color.black, style=label.style_label_up)
+                monitoring_entry := false
+                pending_direction := na
+
+// Cancel monitoring if market switches from ranging to trending OR outside trading hours
+if monitoring_entry and (not ranging or not is_trading_time())
+    monitoring_entry := false
+    pending_direction := na
+
+// Close all trades at 3:50 PM
+if is_closeout_time() and strategy.position_size != 0
+    strategy.close_all("Daily Close-Out")
+
+// Add position tracking debug
+if strategy.position_size != 0
+    label.new(bar_index, close[0], "POSITION OPEN\nSize: " + str.tostring(strategy.position_size) + "\nEntry: " + str.tostring(strategy.position_avg_price), 
+             color=color.blue, textcolor=color.white, style=label.style_label_center)
+
+// =============================================================================
+// PLOTTING
+// =============================================================================
+
+// Draw range box
+if barstate.isconfirmed
+    box.delete(box.new(bar_index-box_size, range_high, bar_index, range_low, color.gray, 1, bgcolor=color.new(color.gray, 90))[1])
+    line.delete(line.new(bar_index-box_size, range_midline, bar_index, range_midline, color=color.gray, style=line.style_dashed)[1])
+
+// Draw market state label
+if barstate.isconfirmed
+    label.delete(label.new(bar_index, range_low, ranging ? "🟢 Ranging" : "🟡 Trending", style=label.style_label_left, color=color(na), textcolor=chart.fg_color)[1])
+    
+    // Add debug info
+    range_status = range_valid ? "✅" : "❌"
+    debug_text = "ADX: " + str.tostring(adx, "#.##") + " | Range: " + str.tostring(range_high, "#.##") + " - " + str.tostring(range_low, "#.##") + " | Box: " + str.tostring(box_size) + " | Mid: " + str.tostring(range_midline, "#.##") + " | Current: " + str.tostring(close[0], "#.##") + " | Range: " + range_status + " " + str.tostring(range_size_pct, "#.##") + "%"
+    label.delete(label.new(bar_index, range_high, debug_text, style=label.style_label_right, color=color(na), textcolor=color.white)[1])
+
+// Draw circles for mean reversion points
+if barstate.isconfirmed and ranging and strategy.position_size == 0
+    max_circles = math.min(box_size-10, 20)  // Use box_size for circle detection
+    for i = 0 to max_circles
+        if i+1 < bar_index and high[i+1] > range_high and high[i] < range_high
+            // Draw top circle
+            points.clear()
+            float angle = 0
+            source = high[i+1]
+            
+            for j = 1 to 11
+                xValue = int(math.round(2 * 2 * math.sin(angle))) + bar_index - 1 - i
+                yValue = ta.atr(200) * 0.05 * 15 * math.cos(angle) + source
+                angle := angle + math.pi / 5
+                points.push(chart.point.from_index(xValue, yValue))
+            
+            polyline.new(points, curved=false, line_color=color.white, line_width=1, force_overlay=false)
+            
+        if i+1 < bar_index and low[i+1] < range_low and low[i] > range_low
+            // Draw bottom circle
+            points.clear()
+            float angle = 0
+            source = low[i+1]
+            
+            for j = 1 to 11
+                xValue = int(math.round(2 * 2 * math.sin(angle))) + bar_index - 1 - i
+                yValue = ta.atr(200) * 0.05 * 15 * math.cos(angle) + source
+                angle := angle + math.pi / 5
+                points.push(chart.point.from_index(xValue, yValue))
+            
+            polyline.new(points, curved=false, line_color=color.white, line_width=1, force_overlay=false) 

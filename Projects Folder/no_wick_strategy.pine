@@ -1,0 +1,192 @@
+//@version=5
+strategy("No Wick Strategy V1 - Flexible Asset/Timeframe, Dollar Risk", overlay=true, initial_capital=100000, default_qty_type=strategy.fixed, default_qty_value=1)
+
+// Trade Direction Input
+tradeDirection = input.string("Both", "Trade Direction", options=["Long Only", "Short Only", "Both"], group="Strategy Settings", tooltip="Select which direction to trade")
+
+// Input parameters
+wickThreshold = input.float(0.6, "Wick Size Threshold (%)", minval=0, maxval=100, step=0.1, tooltip = "If wick makes up less than X % of total candle size it will be considered a no wick", group = "Candle Settings") / 100
+
+// === INPUTS ===
+showAsia   = input.bool(true, "Show Asia Session")
+asiaStartH = input.int(23, "Asia Start Hour (GMT)", minval=0, maxval=23, group="Asia")
+asiaStartM = input.int(0, "Asia Start Minute (GMT)", minval=0, maxval=59, group="Asia")
+asiaEndH   = input.int(7, "Asia End Hour (GMT)", minval=0, maxval=23, group="Asia")
+asiaEndM   = input.int(0, "Asia End Minute (GMT)", minval=0, maxval=59, group="Asia")
+
+showLondon = input.bool(true, "Show London Session")
+londonStartH = input.int(7, "London Start Hour (GMT)", minval=0, maxval=23, group="London")
+londonStartM = input.int(0, "London Start Minute (GMT)", minval=0, maxval=59, group="London")
+londonEndH   = input.int(15, "London End Hour (GMT)", minval=0, maxval=23, group="London")
+londonEndM   = input.int(0, "London End Minute (GMT)", minval=0, maxval=59, group="London")
+
+showNY     = input.bool(true, "Show NY Session")
+nyStartH   = input.int(13, "NY Start Hour (GMT)", minval=0, maxval=23, group="NY")
+nyStartM   = input.int(0, "NY Start Minute (GMT)", minval=0, maxval=59, group="NY")
+nyEndH     = input.int(21, "NY End Hour (GMT)", minval=0, maxval=23, group="NY")
+nyEndM     = input.int(0, "NY End Minute (GMT)", minval=0, maxval=59, group="NY")
+
+useDST     = input.bool(false, "Add 1 hour for DST?", group="General")
+sessionsToShow = input.int(3, "Number of Sessions to Show", minval=1, maxval=10, group="General")
+
+// === SESSION TIME CALCULATION ===
+getSessionTimes(starth, startm, endh, endm) =>
+    _dst = useDST ? 1 : 0
+    start = starth + _dst
+    end   = endh + _dst
+    [start, startm, end, endm]
+
+// Returns true if the current bar is in the session (GMT)
+inSession(starth, startm, endh, endm) =>
+    sessStart = starth * 60 + startm
+    sessEnd   = endh * 60 + endm
+    t = hour * 60 + minute
+    sessStart < sessEnd ? (t >= sessStart and t < sessEnd) : (t >= sessStart or t < sessEnd)
+
+// === SESSION DRAW FUNCTION ===
+drawSessionLines(startBars, endBars, highs, lows, highBroken, lowBroken, color_, name_) =>
+    sz = array.size(startBars)
+    for i = 0 to sz - 1
+        if array.size(startBars) > i and array.size(endBars) > i and array.size(highs) > i and array.size(lows) > i and array.size(highBroken) > i and array.size(lowBroken) > i
+            startBar = int(array.get(startBars, i))
+            hi       = array.get(highs, i)
+            lo       = array.get(lows, i)
+            isHighBroken = array.get(highBroken, i)
+            isLowBroken = array.get(lowBroken, i)
+            
+            if not na(startBar) and not na(hi) and not na(lo)
+                // Draw high line if not broken
+                if not isHighBroken
+                    line.new(startBar, hi, bar_index, hi, color=color_, width=2)
+                    highMidBar = startBar + math.round((bar_index - startBar) / 4)  // Position at 1/4 of the line
+                    label.new(highMidBar, hi, name_ + " High: " + str.tostring(hi, format.mintick), 
+                              color=color.new(color_, 100), 
+                              style=label.style_label_down, 
+                              textcolor=color_, 
+                              yloc=yloc.price)
+                
+                // Draw low line if not broken
+                if not isLowBroken
+                    line.new(startBar, lo, bar_index, lo, color=color_, width=2)
+                    lowMidBar = startBar + math.round((bar_index - startBar) * 3/4)  // Position at 3/4 of the line
+                    label.new(lowMidBar, lo, name_ + " Low: " + str.tostring(lo, format.mintick), 
+                              color=color.new(color_, 100), 
+                              style=label.style_label_up, 
+                              textcolor=color_, 
+                              yloc=yloc.price)
+
+// === SESSION LOGIC ===
+processSession(show, starth, startm, endh, endm, color_, name_, startBars, endBars, highs, lows, highBroken, lowBroken) =>
+    var float hi = na
+    var float lo = na
+    var int startBar = na
+    var int endBar = na
+    [sH, sM, eH, eM] = getSessionTimes(starth, startm, endh, endm)
+    inSess = inSession(sH, sM, eH, eM)
+    newSession = na(inSess[1]) ? false : (not inSess[1] and inSess)
+    
+    if newSession
+        hi := high
+        lo := low
+        startBar := bar_index
+    if inSess
+        hi := na(hi) ? high : math.max(hi, high)
+        lo := na(lo) ? low : math.min(lo, low)
+        endBar := bar_index
+    
+    endSession = na(inSess[1]) ? false : (inSess[1] and not inSess)
+    if endSession and not na(hi) and not na(lo) and not na(startBar)
+        array.unshift(startBars, float(startBar))
+        array.unshift(endBars, float(endBar))
+        array.unshift(highs, hi)
+        array.unshift(lows, lo)
+        array.unshift(highBroken, false)
+        array.unshift(lowBroken, false)
+        // Limit to X sessions
+        if array.size(startBars) > sessionsToShow
+            array.pop(startBars)
+            array.pop(endBars)
+            array.pop(highs)
+            array.pop(lows)
+            array.pop(highBroken)
+            array.pop(lowBroken)
+        hi := na
+        lo := na
+        startBar := na
+        endBar := na
+    
+    // Check for breaks in existing lines
+    if array.size(highs) > 0 and array.size(lows) > 0 and array.size(highBroken) > 0 and array.size(lowBroken) > 0
+        for i = 0 to array.size(highs) - 1
+            if close > array.get(highs, i)
+                array.set(highBroken, i, true)
+            if close < array.get(lows, i)
+                array.set(lowBroken, i, true)
+
+// --- Asia Session ---
+var asiaStartBars = array.new_float()
+var asiaEndBars   = array.new_float()
+var asiaHighs     = array.new_float()
+var asiaLows      = array.new_float()
+var asiaHighBroken = array.new_bool()
+var asiaLowBroken = array.new_bool()
+if showAsia
+    processSession(showAsia, asiaStartH, asiaStartM, asiaEndH, asiaEndM, color.blue, "Asia", asiaStartBars, asiaEndBars, asiaHighs, asiaLows, asiaHighBroken, asiaLowBroken)
+    if array.size(asiaStartBars) > 0
+        drawSessionLines(asiaStartBars, asiaEndBars, asiaHighs, asiaLows, asiaHighBroken, asiaLowBroken, color.blue, "Asia")
+
+// --- London Session ---
+var londonStartBars = array.new_float()
+var londonEndBars   = array.new_float()
+var londonHighs     = array.new_float()
+var londonLows      = array.new_float()
+var londonHighBroken = array.new_bool()
+var londonLowBroken = array.new_bool()
+if showLondon
+    processSession(showLondon, londonStartH, londonStartM, londonEndH, londonEndM, color.yellow, "London", londonStartBars, londonEndBars, londonHighs, londonLows, londonHighBroken, londonLowBroken)
+    if array.size(londonStartBars) > 0
+        drawSessionLines(londonStartBars, londonEndBars, londonHighs, londonLows, londonHighBroken, londonLowBroken, color.yellow, "London")
+
+// --- NY Session ---
+var nyStartBars = array.new_float()
+var nyEndBars   = array.new_float()
+var nyHighs     = array.new_float()
+var nyLows      = array.new_float()
+var nyHighBroken = array.new_bool()
+var nyLowBroken = array.new_bool()
+if showNY
+    processSession(showNY, nyStartH, nyStartM, nyEndH, nyEndM, color.lime, "NY", nyStartBars, nyEndBars, nyHighs, nyLows, nyHighBroken, nyLowBroken)
+    if array.size(nyStartBars) > 0
+        drawSessionLines(nyStartBars, nyEndBars, nyHighs, nyLows, nyHighBroken, nyLowBroken, color.lime, "NY")
+
+// Strategy logic
+var float longEntryPrice = na
+var float shortEntryPrice = na
+var int longOrderBars = 0
+var int shortOrderBars = 0
+
+// Calculate stop loss distance for position sizing (in price units)
+longStopDist  = atr * atrMultiplier
+shortStopDist = atr * atrMultiplier
+
+// Calculate qty for each trade (rounded down to nearest integer contract/coin/lot)
+longQty  = longStopDist > 0 ? math.floor(riskDollars / longStopDist) : na
+shortQty = shortStopDist > 0 ? math.floor(riskDollars / shortStopDist) : na
+
+// Long setup - Modified to respect trade direction
+if isBullishNoWick and strategy.position_size == 0 and not na(longQty) and longQty > 0 and (tradeDirection == "Long Only" or tradeDirection == "Both")
+    longEntryPrice := open - limitDistance
+    longOrderBars := 0
+    strategy.entry("Long", strategy.long, limit=longEntryPrice, qty=longQty)
+    strategy.exit("TP/SL", "Long", stop=longEntryPrice - longStopDist, limit=longEntryPrice + (longStopDist * tpMultiplier))
+
+// Short setup - Modified to respect trade direction
+if isBearishNoWick and strategy.position_size == 0 and not na(shortQty) and shortQty > 0 and (tradeDirection == "Short Only" or tradeDirection == "Both")
+    shortEntryPrice := close + limitDistance
+    shortOrderBars := 0
+    strategy.entry("Short", strategy.short, limit=shortEntryPrice, qty=shortQty)
+    strategy.exit("TP/SL", "Short", stop=shortEntryPrice + shortStopDist, limit=shortEntryPrice - (shortStopDist * tpMultiplier))
+
+// Plot signals for visualization - Modified to respect trade direction
+plotshape(isBullishNoWick and (tradeDirection == "Long Only" or tradeDirection == "Both"), "Bullish No Wick", shape.triangleup, location.belowbar, color.green, size=size.small)
+plotshape(isBearishNoWick and (tradeDirection == "Short Only" or tradeDirection == "Both"), "Bearish No Wick", shape.triangledown, location.abovebar, color.red, size=size.small) 

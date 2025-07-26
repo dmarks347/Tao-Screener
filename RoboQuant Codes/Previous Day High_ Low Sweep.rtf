@@ -1,0 +1,229 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2822
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 //@version=5\
+indicator("Robo Quant Prev. Day Sweep", overlay=true, max_lines_count=50)\
+\
+// Number of previous days to display\
+dayCount = input.int(10, "Number of Previous Days", minval=1, maxval=20)\
+\
+// Color inputs\
+highColor = input.color(color.red, "High Level Color")\
+lowColor = input.color(color.blue, "Low Level Color")\
+highTriangleColor = input.color(color.red, "High Breakout Triangle Color")\
+lowTriangleColor = input.color(color.blue, "Low Breakout Triangle Color")\
+lineTransparency = input.int(20, "Line Transparency", minval=0, maxval=100, tooltip="0 = fully visible, 100 = invisible")\
+lineWidth = input.int(1, "Line Width", minval=1, maxval=4)\
+\
+// Detect new day\
+newDay = dayofweek != dayofweek[1] or dayofmonth != dayofmonth[1]\
+\
+// Current day tracking variables\
+var int prevDayStartBar = na\
+var int prevDayEndBar = na\
+var int currentDayStartBar = 0\
+\
+// Arrays to store previous days' data\
+var float[] prevHighs = array.new_float(dayCount, na)\
+var float[] prevLows = array.new_float(dayCount, na)\
+var int[] highBars = array.new_int(dayCount, na)\
+var int[] lowBars = array.new_int(dayCount, na)\
+var line[] highLines = array.new_line(dayCount, na)\
+var line[] lowLines = array.new_line(dayCount, na)\
+var bool[] highBroken = array.new_bool(dayCount, false)\
+var bool[] lowBroken = array.new_bool(dayCount, false)\
+var int[] highBreakBars = array.new_int(dayCount, na)\
+var int[] lowBreakBars = array.new_int(dayCount, na)\
+\
+// Variables for proper breakout detection\
+var bool highBreakoutToday = false\
+var bool lowBreakoutToday = false\
+\
+// Track today's breakouts and reset on new day\
+if newDay\
+    highBreakoutToday := false\
+    lowBreakoutToday := false\
+\
+// Variables to detect exact breakout moments\
+highBreakout = false\
+lowBreakout = false\
+\
+// Check for breakouts of the most recent day's levels only (index 0)\
+if not na(array.get(prevHighs, 0)) and not highBreakoutToday\
+    if high > array.get(prevHighs, 0) and high[1] <= array.get(prevHighs, 0)\
+        highBreakout := true\
+        highBreakoutToday := true\
+        // Update line endpoint to current bar and mark as broken\
+        lineObj = array.get(highLines, 0)\
+        if not na(lineObj)\
+            line.set_x2(lineObj, bar_index)\
+        array.set(highBroken, 0, true)\
+        array.set(highBreakBars, 0, bar_index)\
+\
+if not na(array.get(prevLows, 0)) and not lowBreakoutToday\
+    if low < array.get(prevLows, 0) and low[1] >= array.get(prevLows, 0)\
+        lowBreakout := true\
+        lowBreakoutToday := true\
+        // Update line endpoint to current bar and mark as broken\
+        lineObj = array.get(lowLines, 0)\
+        if not na(lineObj)\
+            line.set_x2(lineObj, bar_index)\
+        array.set(lowBroken, 0, true)\
+        array.set(lowBreakBars, 0, bar_index)\
+\
+// Plot the breakout triangles\
+plotshape(highBreakout, title="High Breakout", location=location.abovebar, color=highTriangleColor, style=shape.triangledown, size=size.small)\
+plotshape(lowBreakout, title="Low Breakout", location=location.belowbar, color=lowTriangleColor, style=shape.triangleup, size=size.small)\
+\
+// Check for breakouts of older days' levels (without plotting triangles)\
+for i = 1 to dayCount - 1\
+    // Only check levels that are valid and not already broken\
+    if not na(array.get(prevHighs, i)) and not array.get(highBroken, i)\
+        // Current high breaks above previous day's high AND previous high was at or below\
+        if high > array.get(prevHighs, i) and high[1] <= array.get(prevHighs, i)\
+            // Set line endpoint to current bar and mark as broken\
+            lineObj = array.get(highLines, i)\
+            if not na(lineObj)\
+                line.set_x2(lineObj, bar_index)\
+            array.set(highBroken, i, true)\
+            array.set(highBreakBars, i, bar_index)\
+    \
+    // Check for low breakouts\
+    if not na(array.get(prevLows, i)) and not array.get(lowBroken, i)\
+        // Current low breaks below previous day's low AND previous low was at or above\
+        if low < array.get(prevLows, i) and low[1] >= array.get(prevLows, i)\
+            // Set line endpoint to current bar and mark as broken\
+            lineObj = array.get(lowLines, i)\
+            if not na(lineObj)\
+                line.set_x2(lineObj, bar_index)\
+            array.set(lowBroken, i, true)\
+            array.set(lowBreakBars, i, bar_index)\
+\
+// Update lines to extend to current bar ONLY if not broken yet\
+if barstate.islast\
+    for i = 0 to dayCount - 1\
+        highLineObj = array.get(highLines, i)\
+        lowLineObj = array.get(lowLines, i)\
+        \
+        // Only extend lines that haven't been broken\
+        if not na(highLineObj) and not array.get(highBroken, i)\
+            line.set_x2(highLineObj, bar_index)\
+        if not na(lowLineObj) and not array.get(lowBroken, i)\
+            line.set_x2(lowLineObj, bar_index)\
+\
+// Process new day\
+if newDay\
+    // Mark start of this day\
+    prevDayEndBar := bar_index - 1\
+    prevDayStartBar := currentDayStartBar\
+    currentDayStartBar := bar_index\
+    \
+    // Calculate previous day's high and low\
+    if prevDayStartBar >= 0 and prevDayEndBar > prevDayStartBar\
+        // Initialize with the first bar's values\
+        float dayHigh = high[bar_index - prevDayStartBar]\
+        float dayLow = low[bar_index - prevDayStartBar]\
+        int dayHighBar = prevDayStartBar\
+        int dayLowBar = prevDayStartBar\
+        \
+        // Scan through all bars in the previous day\
+        for i = prevDayStartBar to prevDayEndBar\
+            barIndex = bar_index - i\
+            if barIndex >= 0\
+                // Update high if found higher value\
+                if high[barIndex] > dayHigh\
+                    dayHigh := high[barIndex]\
+                    dayHighBar := i\
+                \
+                // Update low if found lower value\
+                if low[barIndex] < dayLow\
+                    dayLow := low[barIndex]\
+                    dayLowBar := i\
+        \
+        // Shift all data in arrays (manually, without using negative loop step)\
+        // First, temporarily store last items to handle edge case\
+        float tempLastHigh = array.get(prevHighs, dayCount-1)\
+        float tempLastLow = array.get(prevLows, dayCount-1)\
+        int tempLastHighBar = array.get(highBars, dayCount-1)\
+        int tempLastLowBar = array.get(lowBars, dayCount-1)\
+        bool tempLastHighBroken = array.get(highBroken, dayCount-1)\
+        bool tempLastLowBroken = array.get(lowBroken, dayCount-1)\
+        int tempLastHighBreakBar = array.get(highBreakBars, dayCount-1)\
+        int tempLastLowBreakBar = array.get(lowBreakBars, dayCount-1)\
+        line tempLastHighLine = array.get(highLines, dayCount-1)\
+        line tempLastLowLine = array.get(lowLines, dayCount-1)\
+        \
+        // Delete the last lines if they exist (to prevent memory leak)\
+        if not na(tempLastHighLine)\
+            line.delete(tempLastHighLine)\
+        if not na(tempLastLowLine)\
+            line.delete(tempLastLowLine)\
+            \
+        // Shift elements one by one (starting from the end)\
+        for i = 0 to dayCount - 2\
+            j = dayCount - 2 - i  // This creates a reverse loop effect with positive step\
+            \
+            // Move items from position j to j+1\
+            array.set(prevHighs, j+1, array.get(prevHighs, j))\
+            array.set(prevLows, j+1, array.get(prevLows, j))\
+            array.set(highBars, j+1, array.get(highBars, j))\
+            array.set(lowBars, j+1, array.get(lowBars, j))\
+            array.set(highBroken, j+1, array.get(highBroken, j))\
+            array.set(lowBroken, j+1, array.get(lowBroken, j))\
+            array.set(highBreakBars, j+1, array.get(highBreakBars, j))\
+            array.set(lowBreakBars, j+1, array.get(lowBreakBars, j))\
+            array.set(highLines, j+1, array.get(highLines, j))\
+            array.set(lowLines, j+1, array.get(lowLines, j))\
+        \
+        // Store new day's data at position 0\
+        array.set(prevHighs, 0, dayHigh)\
+        array.set(prevLows, 0, dayLow)\
+        array.set(highBars, 0, dayHighBar)\
+        array.set(lowBars, 0, dayLowBar)\
+        array.set(highBroken, 0, false)\
+        array.set(lowBroken, 0, false)\
+        array.set(highBreakBars, 0, na)\
+        array.set(lowBreakBars, 0, na)\
+        \
+        // Clear new line references\
+        array.set(highLines, 0, na)\
+        array.set(lowLines, 0, na)\
+        \
+        // Draw new lines for all days\
+        for i = 0 to dayCount - 1\
+            dayHigh := array.get(prevHighs, i)\
+            dayLow := array.get(prevLows, i)\
+            dayHighBar := array.get(highBars, i)\
+            dayLowBar := array.get(lowBars, i)\
+            \
+            if not na(dayHigh) and not na(dayLow)\
+                // Apply transparency to the colors\
+                highColorWithTransparency = color.new(highColor, lineTransparency)\
+                lowColorWithTransparency = color.new(lowColor, lineTransparency)\
+                \
+                // Create new lines with correct endpoints based on broken status\
+                if array.get(highBroken, i)\
+                    // Use the break bar as the endpoint for broken levels\
+                    highBreakBar = array.get(highBreakBars, i)\
+                    if not na(highBreakBar)\
+                        newHighLine = line.new(x1=dayHighBar, y1=dayHigh, x2=highBreakBar, y2=dayHigh, color=highColorWithTransparency, width=lineWidth, style=line.style_dashed)\
+                        array.set(highLines, i, newHighLine)\
+                else\
+                    // Extend to current bar for unbroken levels\
+                    newHighLine = line.new(x1=dayHighBar, y1=dayHigh, x2=bar_index, y2=dayHigh, color=highColorWithTransparency, width=lineWidth, style=line.style_dashed)\
+                    array.set(highLines, i, newHighLine)\
+                \
+                if array.get(lowBroken, i)\
+                    // Use the break bar as the endpoint for broken levels\
+                    lowBreakBar = array.get(lowBreakBars, i)\
+                    if not na(lowBreakBar)\
+                        newLowLine = line.new(x1=dayLowBar, y1=dayLow, x2=lowBreakBar, y2=dayLow, color=lowColorWithTransparency, width=lineWidth, style=line.style_dashed)\
+                        array.set(lowLines, i, newLowLine)\
+                else\
+                    // Extend to current bar for unbroken levels\
+                    newLowLine = line.new(x1=dayLowBar, y1=dayLow, x2=bar_index, y2=dayLow, color=lowColorWithTransparency, width=lineWidth, style=line.style_dashed)\
+                    array.set(lowLines, i, newLowLine) }

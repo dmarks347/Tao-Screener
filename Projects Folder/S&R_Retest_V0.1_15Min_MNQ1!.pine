@@ -1,0 +1,963 @@
+//@version=5
+strategy("S&R Re-Test Entry 15 Min V0.1 - L&S", shorttitle="S/R Re-test - 15MIN / MES1!", overlay=true, max_lines_count=500)
+
+// =============================================================================
+// TIME PERIOD INPUTS
+// =============================================================================
+
+// Define time options with 15-minute intervals (04:00 to 20:00 ET)
+time_options = array.from("04:00", "04:15", "04:30", "04:45", "05:00", "05:15", "05:30", "05:45", 
+                         "06:00", "06:15", "06:30", "06:45", "07:00", "07:15", "07:30", "07:45",
+                         "08:00", "08:15", "08:30", "08:45", "09:00", "09:15", "09:30", "09:45",
+                         "10:00", "10:15", "10:30", "10:45", "11:00", "11:15", "11:30", "11:45",
+                         "12:00", "12:15", "12:30", "12:45", "13:00", "13:15", "13:30", "13:45",
+                         "14:00", "14:15", "14:30", "14:45", "15:00", "15:15", "15:30", "15:45",
+                         "16:00", "16:15", "16:30", "16:45", "17:00", "17:15", "17:30", "17:45",
+                         "18:00", "18:15", "18:30", "18:45", "19:00", "19:15", "19:30", "19:45", "20:00")
+
+// S/R Detection Time Period (New York Time)
+sr_start_time = input.string("07:30", "Support & Resistance Detection Start Time", options=["04:00", "04:15", "04:30", "04:45", "05:00", "05:15", "05:30", "05:45", "06:00", "06:15", "06:30", "06:45", "07:00", "07:15", "07:30", "07:45", "08:00", "08:15", "08:30", "08:45", "09:00", "09:15", "09:30", "09:45", "10:00", "10:15", "10:30", "10:45", "11:00", "11:15", "11:30", "11:45", "12:00", "12:15", "12:30", "12:45", "13:00", "13:15", "13:30", "13:45", "14:00", "14:15", "14:30", "14:45", "15:00", "15:15", "15:30", "15:45", "16:00", "16:15", "16:30", "16:45", "17:00", "17:15", "17:30", "17:45", "18:00", "18:15", "18:30", "18:45", "19:00", "19:15", "19:30", "19:45", "20:00"], tooltip="This will be the earliest time a Support & Resistance line can be created", group="S/R Detection Hours - New York Eastern Time")
+
+sr_end_time = input.string("15:30", "Support & Resistance Detection End Time", 
+                          options=["04:00", "04:15", "04:30", "04:45", "05:00", "05:15", "05:30", "05:45", 
+                                  "06:00", "06:15", "06:30", "06:45", "07:00", "07:15", "07:30", "07:45",
+                                  "08:00", "08:15", "08:30", "08:45", "09:00", "09:15", "09:30", "09:45",
+                                  "10:00", "10:15", "10:30", "10:45", "11:00", "11:15", "11:30", "11:45",
+                                  "12:00", "12:15", "12:30", "12:45", "13:00", "13:15", "13:30", "13:45",
+                                  "14:00", "14:15", "14:30", "14:45", "15:00", "15:15", "15:30", "15:45",
+                                  "16:00", "16:15", "16:30", "16:45", "17:00", "17:15", "17:30", "17:45",
+                                  "18:00", "18:15", "18:30", "18:45", "19:00", "19:15", "19:30", "19:45", "20:00"],
+                          tooltip="This will be the last candle used to develop a Support & Resistance line", group="S/R Detection Hours - New York Eastern Time")
+
+/// Long Trading Time Period (New York Time)  
+long_trade_start_time = input.string("08:30", "Long Trading Start Time", options=["04:00", "04:15", "04:30", "04:45", "05:00", "05:15", "05:30", "05:45", "06:00", "06:15", "06:30", "06:45", "07:00", "07:15", "07:30", "07:45", "08:00", "08:15", "08:30", "08:45", "09:00", "09:15", "09:30", "09:45", "10:00", "10:15", "10:30", "10:45", "11:00", "11:15", "11:30", "11:45", "12:00", "12:15", "12:30", "12:45", "13:00", "13:15", "13:30", "13:45", "14:00", "14:15", "14:30", "14:45", "15:00", "15:15", "15:30", "15:45", "16:00", "16:15", "16:30", "16:45", "17:00", "17:15", "17:30", "17:45", "18:00", "18:15", "18:30", "18:45", "19:00", "19:15", "19:30", "19:45", "20:00"], tooltip="This is the earliest time a long trade can be taken", group="Long Trading Hours - New York Eastern Time")
+
+long_trade_end_time = input.string("15:30", "Long Trading End Time", 
+                                  options=["04:00", "04:15", "04:30", "04:45", "05:00", "05:15", "05:30", "05:45", 
+                                          "06:00", "06:15", "06:30", "06:45", "07:00", "07:15", "07:30", "07:45",
+                                          "08:00", "08:15", "08:30", "08:45", "09:00", "09:15", "09:30", "09:45",
+                                          "10:00", "10:15", "10:30", "10:45", "11:00", "11:15", "11:30", "11:45",
+                                          "12:00", "12:15", "12:30", "12:45", "13:00", "13:15", "13:30", "13:45",
+                                          "14:00", "14:15", "14:30", "14:45", "15:00", "15:15", "15:30", "15:45",
+                                          "16:00", "16:15", "16:30", "16:45", "17:00", "17:15", "17:30", "17:45",
+                                          "18:00", "18:15", "18:30", "18:45", "19:00", "19:15", "19:30", "19:45", "20:00"],
+                                  tooltip="This is the leatest time a long trade can be taken", group="Long Trading Hours - New York Eastern Time")
+
+// Short Trading Time Period (New York Time)  
+short_trade_start_time = input.string("07:30", "Short Trading Start Time", 
+                                     options=["04:00", "04:15", "04:30", "04:45", "05:00", "05:15", "05:30", "05:45", 
+                                             "06:00", "06:15", "06:30", "06:45", "07:00", "07:15", "07:30", "07:45",
+                                             "08:00", "08:15", "08:30", "08:45", "09:00", "09:15", "09:30", "09:45",
+                                             "10:00", "10:15", "10:30", "10:45", "11:00", "11:15", "11:30", "11:45",
+                                             "12:00", "12:15", "12:30", "12:45", "13:00", "13:15", "13:30", "13:45",
+                                             "14:00", "14:15", "14:30", "14:45", "15:00", "15:15", "15:30", "15:45",
+                                             "16:00", "16:15", "16:30", "16:45", "17:00", "17:15", "17:30", "17:45",
+                                             "18:00", "18:15", "18:30", "18:45", "19:00", "19:15", "19:30", "19:45", "20:00"],
+                                     tooltip="This is the leatest time a short trade can be taken", group="Short Trading Hours - New York Eastern TIme")
+
+short_trade_end_time = input.string("15:30", "Short Trading End Time", 
+                                   options=["04:00", "04:15", "04:30", "04:45", "05:00", "05:15", "05:30", "05:45", 
+                                           "06:00", "06:15", "06:30", "06:45", "07:00", "07:15", "07:30", "07:45",
+                                           "08:00", "08:15", "08:30", "08:45", "09:00", "09:15", "09:30", "09:45",
+                                           "10:00", "10:15", "10:30", "10:45", "11:00", "11:15", "11:30", "11:45",
+                                           "12:00", "12:15", "12:30", "12:45", "13:00", "13:15", "13:30", "13:45",
+                                           "14:00", "14:15", "14:30", "14:45", "15:00", "15:15", "15:30", "15:45",
+                                           "16:00", "16:15", "16:30", "16:45", "17:00", "17:15", "17:30", "17:45",
+                                           "18:00", "18:15", "18:30", "18:45", "19:00", "19:15", "19:30", "19:45", "20:00"],
+                                   tooltip="This is the leatest time a short trade can be taken", group="Short Trading Hours - New York Eastern Time")
+
+// Daily Close-Out Time
+daily_closeout_time = input.string("15:50", "Daily Close-Out Time - New York Eastern TIme", 
+                                  options=["14:00", "14:15", "14:30", "14:45", "15:00", "15:15", "15:30", "15:45",
+                                          "15:50", "15:55", "16:00", "16:15", "16:30", "16:45", "17:00", "17:15", "17:30", "17:45",
+                                          "18:00", "18:15", "18:30", "18:45", "19:00", "19:15", "19:30", "19:45", "20:00"],
+                                  tooltip="Time to close all trades and stop new entries until next trading day", group="Daily Close-Out")
+
+// =============================================================================
+// ORIGINAL S/R INPUTS
+// =============================================================================
+
+n = input.int(60, "S/R Look Back Period", minval=1, step=1, group="Support & Resistance Parameters", tooltip = "The number of candles to be investigated when creating a support or resistance line")
+x = input.int(2, "Candles Required To Create S/R", minval=2, step=1, group="Support & Resistance Parameters", tooltip = "The number of candles required to create a support or resistance line, minimum = 2")
+y = input.float(0.03, "Sensitivity (%)", minval=0.005, maxval=0.1, step=0.005, group="Support & Resistance Parameters", tooltip = "The allowable difference between the candles creating a support or resistance line, lower number is more restrictive, higher number is less restrictive")
+z = input.int(0, "Candles Allowed Between", minval=0, step=1, group="Support & Resistance Parameters", tooltip = "The number of candles allowed between the candles creating a support or resistnace line, 0 means the candels must be adjacent to each other")
+max_levels = input.int(3, "Maximum Levels to Track", minval=1, maxval=20, step=1, group="Support & Resistance Parameters", tooltip = "The maximum number of support & resistance lines to display. Only lines that are displayed are considered in the trading strategy")
+
+// =============================================================================
+// TRADE DIRECTION AND STRATEGY INPUTS
+// =============================================================================
+
+trade_direction = input.string("Both", "Trade Direction", options=["Long Only", "Short Only", "Both"], group="Trade Direction")
+
+// Support Touch Strategy Inputs (Long positions)
+min_separation_candles = input.int(3, "Minimum Separation Candles", minval=0, step=1, group="Support Strategy", tooltip = "The minimum number of candles required between the last candle forming the support or resistance line and the trade entry candle")
+max_separation_candles = input.int(50, "Maximum Separation Candles", minval=1, step=1, group="Support Strategy", tooltip = "The maxmimum number of candles allowed between the last candle forming the support or resistance line and the trade entry candle")
+entry_window_candles = input.int(4, "Entry Window Candles", minval=1, step=1, group="Support Strategy", tooltip = "Maximum number of candles after a valid entry set up to look for entry signal")
+max_simultaneous_long_trades = input.int(1, "Max Simultaneous Long Trades", minval=1, maxval=5, step=1, group="Support Strategy", tooltip = "Maximum number of open long trades at same time")
+prevent_reentry_bars = input.int(1, "Prevent Re-entry Bars", minval=1, maxval=20, step=1, group="Support Strategy", tooltip = "Bars to wait after stop loss before allowing re-entry at same level")
+take_profit_multiple_long = input.float(1.9, "Long Take Profit Multiple", minval=0.5, maxval=10.0, step=0.1, group="Support Strategy", tooltip = "Take Profit as a multiple of the Stop Loss")
+min_candle_body_percent = input.float(48, "Min Candle Body %", minval=0.5, maxval=80.0, step=0.5, group="Support Strategy", tooltip = "Minimum candle body size as % of candle range (high-low)")
+
+// Resistance Touch Strategy Inputs (Short positions)
+resistance_min_separation_candles = input.int(1, "Minimum Separation Candles", minval=0, step=1, group="Resistance Strategy", tooltip = "The minimum number of candles required between the last candle forming the support or resistance line and the trade entry candle")
+resistance_max_separation_candles = input.int(50, "Maximum Separation Candles", minval=1, step=1, group="Resistance Strategy", tooltip = "The maxmimum number of candles allowed between the last candle forming the support or resistance line and the trade entry candle")
+resistance_entry_window_candles = input.int(5, "Entry Window Candles", minval=1, step=1, group="Resistance Strategy", tooltip = "Maximum number of candles after a valid entry set up to look for entry signal")
+max_simultaneous_short_trades = input.int(1, "Max Simultaneous Short Trades", minval=1, maxval=5, step=1, group="Resistance Strategy", tooltip = "Maximum number of open short trades at same time")
+resistance_prevent_reentry_bars = input.int(4, "Prevent Re-entry Bars", minval=1, maxval=20, step=1, group="Resistance Strategy", tooltip = "Bars to wait after stop loss before allowing re-entry at same level")
+take_profit_multiple_short = input.float(3.4, "Short Take Profit Multiple", minval=0.5, maxval=10.0, step=0.1, group="Resistance Strategy", tooltip = "Take Profit as a multiple of the Stop Loss")
+resistance_min_candle_body_percent = input.float(52, "Min Candle Body %", minval=0.5, maxval=80.0, step=0.5, group="Resistance Strategy", tooltip = "Minimum candle body size as % of candle range (high-low)")
+
+// =============================================================================
+// STOP LOSS BUFFER INPUT
+// =============================================================================
+
+stop_loss_buffer_percent = input.float(0, "Stop Loss Buffer (%)", minval=0, maxval=50, step=0.5, group="Risk Management", tooltip = "Additional buffer added to stop loss as a percentage of the original stop loss distance. For example, if original stop loss is 10 points and buffer is 10%, actual stop loss will be 11 points (10 + 10% of 10)")
+
+// Validate inputs
+if n < z + 3
+    runtime.error("S/R Look Back Period must be at least " + str.tostring(z + 3))
+
+if max_separation_candles < min_separation_candles
+    runtime.error("Maximum Separation Candles must be >= Minimum Separation Candles")
+
+if resistance_max_separation_candles < resistance_min_separation_candles
+    runtime.error("Resistance Maximum Separation Candles must be >= Minimum Separation Candles")
+
+// =============================================================================
+// VARIABLES AND ARRAYS
+// =============================================================================
+
+var line[] support_lines = array.new<line>()
+var line[] resistance_lines = array.new<line>()
+var float[] support_levels = array.new<float>()
+var float[] resistance_levels = array.new<float>()
+
+// Support strategy tracking
+var int[] support_formation_bars = array.new<int>()  // Bar indices when support levels were formed
+var bool[] support_used = array.new<bool>()          // Track if support level has been used for entry
+var int[] support_touched_bars = array.new<int>()    // Track when each support was last touched
+var bool[] support_pending_entry = array.new<bool>() // Track if support is pending entry evaluation
+
+// Resistance strategy tracking
+var int[] resistance_formation_bars = array.new<int>()  // Bar indices when resistance levels were formed
+var bool[] resistance_used = array.new<bool>()          // Track if resistance level has been used for entry
+var int[] resistance_touched_bars = array.new<int>()    // Track when each resistance was last touched
+var bool[] resistance_pending_entry = array.new<bool>() // Track if resistance is pending entry evaluation
+
+// Trade tracking for position blocking
+var int long_trades_count = 0
+var int short_trades_count = 0
+var bool direction_blocked = false
+var string current_direction = na
+
+// Recent stop losses tracking (separate for longs and shorts)
+var float[] recent_support_stop_levels = array.new<float>()
+var int[] recent_support_stop_bars = array.new<int>()
+var float[] recent_resistance_stop_levels = array.new<float>()
+var int[] recent_resistance_stop_bars = array.new<int>()
+
+// Strategy variables for both directions
+var bool long_entry_signaled = false
+var bool short_entry_signaled = false
+var float long_entry_price = na
+var float short_entry_price = na
+var float long_stop_loss = na
+var float short_stop_loss = na
+var float long_take_profit = na
+var float short_take_profit = na
+var int used_support_index = -1
+var int used_resistance_index = -1
+var int long_trade_counter = 0
+var int short_trade_counter = 0
+
+// Add Volume Force Panel Pro inputs
+volume_force_histogram = input.source(close, "Volume Force Histogram", tooltip="Histogram value from Volume Force Panel Pro")
+volume_force_plot = input.source(close, "Volume Force Plot", tooltip="Plot value from Volume Force Panel Pro")
+
+// Add variables to store the indicator values
+var float vf_histogram = na
+var float vf_plot = na
+
+// =============================================================================
+// FUNCTIONS
+// =============================================================================
+
+// Calculate body base (bottom of candle body)
+get_body_base(index) =>
+    math.min(open[index], close[index])
+
+// Calculate body top (top of candle body)
+get_body_top(index) =>
+    math.max(open[index], close[index])
+
+// Calculate candle body size
+get_body_size(index) =>
+    math.abs(close[index] - open[index])
+
+// Calculate top wick size
+get_top_wick_size(index) =>
+    high[index] - get_body_top(index)
+
+// Calculate bottom wick size
+get_bottom_wick_size(index) =>
+    body_base = get_body_base(index)
+    low[index] - body_base
+
+// Check if two levels are within sensitivity percentage
+levels_within_sensitivity(level1, level2, sensitivity) =>
+    math.abs((level2 - level1) / level1) * 100 <= (sensitivity / 100)
+
+// Validate support level - only check violations from current bar to level formation
+validate_support_level(level, level_formation_bar) =>
+    valid = true
+    violation_count = 0
+    max_violations = math.floor(level_formation_bar * 0.05) // Allow up to 5% violations
+    
+    // Only check if we have bars to validate
+    if level_formation_bar > 0
+        // Only check from current bar to where the level was formed
+        for i = 0 to level_formation_bar - 1
+            if close[i] < level
+                violation_count := violation_count + 1
+                if violation_count > max_violations
+                    valid := false
+                    break
+    valid
+
+// Validate resistance level - only check violations from current bar to level formation
+validate_resistance_level(level, level_formation_bar) =>
+    valid = true
+    violation_count = 0
+    max_violations = math.floor(level_formation_bar * 0.05) // Allow up to 5% violations
+    
+    // Only check if we have bars to validate
+    if level_formation_bar > 0
+        // Only check from current bar to where the level was formed
+        for i = 0 to level_formation_bar - 1
+            if close[i] > level
+                violation_count := violation_count + 1
+                if violation_count > max_violations
+                    valid := false
+                    break
+    valid
+
+// Check if candles between two qualifying candles violate the level
+validate_candles_between_support(start_idx, end_idx, min_level) =>
+    valid = true
+    violation_count = 0
+    total_candles = end_idx - start_idx - 1
+    max_violations = math.max(1, math.floor(total_candles * 0.05)) // Allow 5% violations
+    
+    if end_idx > start_idx + 1 and start_idx >= 0 and end_idx >= 0  // Only check if there are candles between and indices are valid
+        for i = start_idx + 1 to end_idx - 1
+            if open[i] < min_level or close[i] < min_level
+                violation_count := violation_count + 1
+                if violation_count > max_violations
+                    valid := false
+                    break
+    valid
+
+validate_candles_between_resistance(start_idx, end_idx, max_level) =>
+    valid = true
+    violation_count = 0
+    total_candles = end_idx - start_idx - 1
+    max_violations = math.max(1, math.floor(total_candles * 0.05)) // Allow 5% violations
+    
+    if end_idx > start_idx + 1 and start_idx >= 0 and end_idx >= 0  // Only check if there are candles between and indices are valid
+        for i = start_idx + 1 to end_idx - 1
+            if open[i] > max_level or close[i] > max_level
+                violation_count := violation_count + 1
+                if violation_count > max_violations
+                    valid := false
+                    break
+    valid
+
+//Check if level already exists in array (use sensitivity-based tolerance)
+level_exists(levels_array, new_level, tolerance_percent) =>
+    exists = false
+    if array.size(levels_array) > 0
+        for i = 0 to array.size(levels_array) - 1
+            existing_level = array.get(levels_array, i)
+            if math.abs(new_level - existing_level) / existing_level * 100 < tolerance_percent
+                exists := true
+                break
+    exists
+
+// Find support levels
+find_support_levels() =>
+    found_levels = array.new<float>()
+    found_bar_indices = array.new<int>()
+    
+    // Start from most recent bars and work backwards
+    for i = 0 to n - x
+        body_base_reference = get_body_base(i)
+        qualifying_candles = array.new<int>()
+        qualifying_levels = array.new<float>()
+        
+        // Add the reference candle
+        array.push(qualifying_candles, i)
+        array.push(qualifying_levels, body_base_reference)
+        
+        // Look for additional qualifying candles
+        search_end = math.min(n - 1, i + math.max(z + 10, 20))
+        for j = i + 1 to search_end
+            body_base_candidate = get_body_base(j)
+            
+            // Check if this candle's body base is within sensitivity of reference
+            if levels_within_sensitivity(body_base_reference, body_base_candidate, y)
+                array.push(qualifying_candles, j)
+                array.push(qualifying_levels, body_base_candidate)
+                
+                // Stop searching if we have enough candles
+                if array.size(qualifying_candles) >= x
+                    break
+        
+        // If we have enough qualifying candles, create a support level
+        if array.size(qualifying_candles) >= x
+            // Get the minimum level from all qualifying candles
+            min_level = array.get(qualifying_levels, 0)
+            oldest_candle_idx = array.get(qualifying_candles, 0)
+            
+            for k = 1 to array.size(qualifying_levels) - 1
+                current_level = array.get(qualifying_levels, k)
+                current_idx = array.get(qualifying_candles, k)
+                if current_level < min_level
+                    min_level := current_level
+                if current_idx > oldest_candle_idx
+                    oldest_candle_idx := current_idx
+            
+            // Validate no closes below in lookback period
+            if validate_support_level(min_level, i)
+                // Validate candles between don't violate level (check between first and last qualifying candles)
+                if validate_candles_between_support(i, oldest_candle_idx, min_level)
+                    // Check if this level already exists
+                    if not level_exists(found_levels, min_level, y)
+                        if array.size(found_levels) < max_levels
+                            array.push(found_levels, min_level)
+                            // Store bar index of the oldest qualifying candle
+                            array.push(found_bar_indices, bar_index - oldest_candle_idx)
+    
+    [found_levels, found_bar_indices]
+
+// Find resistance levels  
+find_resistance_levels() =>
+    found_levels = array.new<float>()
+    found_bar_indices = array.new<int>()
+    
+    // Start from most recent bars and work backwards
+    for i = 0 to n - x
+        body_top_reference = get_body_top(i)
+        qualifying_candles = array.new<int>()
+        qualifying_levels = array.new<float>()
+        
+        // Add the reference candle
+        array.push(qualifying_candles, i)
+        array.push(qualifying_levels, body_top_reference)
+        
+        // Look for additional qualifying candles
+        search_end = math.min(n - 1, i + math.max(z + 10, 20))
+        for j = i + 1 to search_end
+            body_top_candidate = get_body_top(j)
+            
+            // Check if this candle's body top is within sensitivity of reference
+            if levels_within_sensitivity(body_top_reference, body_top_candidate, y)
+                array.push(qualifying_candles, j)
+                array.push(qualifying_levels, body_top_candidate)
+                
+                // Stop searching if we have enough candles
+                if array.size(qualifying_candles) >= x
+                    break
+        
+        // If we have enough qualifying candles, create a resistance level
+        if array.size(qualifying_candles) >= x
+            // Get the maximum level from all qualifying candles
+            max_level = array.get(qualifying_levels, 0)
+            oldest_candle_idx = array.get(qualifying_candles, 0)
+            
+            for k = 1 to array.size(qualifying_levels) - 1
+                current_level = array.get(qualifying_levels, k)
+                current_idx = array.get(qualifying_candles, k)
+                if current_level > max_level
+                    max_level := current_level
+                if current_idx > oldest_candle_idx
+                    oldest_candle_idx := current_idx
+            
+            // Validate no closes above in lookback period
+            if validate_resistance_level(max_level, i)
+                // Validate candles between don't violate level (check between first and last qualifying candles)
+                if validate_candles_between_resistance(i, oldest_candle_idx, max_level)
+                    // Check if this level already exists
+                    if not level_exists(found_levels, max_level, y)
+                        if array.size(found_levels) < max_levels
+                            array.push(found_levels, max_level)
+                            // Store bar index of the oldest qualifying candle
+                            array.push(found_bar_indices, bar_index - oldest_candle_idx)
+    
+    [found_levels, found_bar_indices]
+
+// Clear existing lines
+clear_lines(lines_array) =>
+    if array.size(lines_array) > 0
+        for i = 0 to array.size(lines_array) - 1
+            line.delete(array.get(lines_array, i))
+    array.clear(lines_array)
+
+// Draw support and resistance lines
+draw_levels() =>
+    // Clear existing lines every 5 bars to refresh with most recent levels
+    if bar_index % 5 == 0
+        clear_lines(support_lines)
+        clear_lines(resistance_lines)
+        array.clear(support_levels)
+        array.clear(resistance_levels)
+        // Clear strategy tracking arrays
+        array.clear(support_formation_bars)
+        array.clear(support_used)
+        array.clear(support_touched_bars)
+        array.clear(support_pending_entry)
+        // Clear resistance tracking arrays
+        array.clear(resistance_formation_bars)
+        array.clear(resistance_used)
+        array.clear(resistance_touched_bars)
+        array.clear(resistance_pending_entry)
+    
+    // Find new levels
+    [current_support_levels, support_bar_indices] = find_support_levels()
+    [current_resistance_levels, resistance_bar_indices] = find_resistance_levels()
+    
+    // Add new support lines (white) - only if they don't already exist and under max limit
+    support_size = array.size(current_support_levels)
+    support_indices_size = array.size(support_bar_indices)
+    
+    if support_size > 0 and support_indices_size > 0 and array.size(support_levels) < max_levels
+        loop_count = math.min(support_size, support_indices_size)
+        for i = 0 to loop_count - 1
+            if array.size(support_levels) >= max_levels
+                break
+                
+            level = array.get(current_support_levels, i)
+            start_bar = array.get(support_bar_indices, i)
+            
+            // Check if this level already exists in our persistent array
+            if not level_exists(support_levels, level, y)
+                support_line = line.new(start_bar, level, start_bar + 50, level, color=color.white, width=2, style=line.style_solid, extend=extend.right)
+                array.push(support_lines, support_line)
+                array.push(support_levels, level)
+                // Track formation data for strategy
+                array.push(support_formation_bars, start_bar)
+                array.push(support_used, false)
+                array.push(support_touched_bars, -1)
+                array.push(support_pending_entry, false)
+    
+    // Add new resistance lines (yellow) - only if they don't already exist and under max limit
+    resistance_size = array.size(current_resistance_levels)
+    resistance_indices_size = array.size(resistance_bar_indices)
+    
+    if resistance_size > 0 and resistance_indices_size > 0 and array.size(resistance_levels) < max_levels
+        loop_count_r = math.min(resistance_size, resistance_indices_size)
+        for i = 0 to loop_count_r - 1
+            if array.size(resistance_levels) >= max_levels
+                break
+                
+            level = array.get(current_resistance_levels, i)
+            start_bar = array.get(resistance_bar_indices, i)
+            
+            // Check if this level already exists in our persistent array
+            if not level_exists(resistance_levels, level, y)
+                resistance_line = line.new(start_bar, level, start_bar + 50, level, color=color.yellow, width=2, style=line.style_solid, extend=extend.right)
+                array.push(resistance_lines, resistance_line)
+                array.push(resistance_levels, level)
+                // Track formation data for strategy
+                array.push(resistance_formation_bars, start_bar)
+                array.push(resistance_used, false)
+                array.push(resistance_touched_bars, -1)
+                array.push(resistance_pending_entry, false)
+
+// =============================================================================
+// TRADE MANAGEMENT FUNCTIONS
+// =============================================================================
+
+// Count current open trades by direction
+count_open_long_trades() =>
+    math.max(0, strategy.position_size)
+
+count_open_short_trades() =>
+    math.max(0, -strategy.position_size)
+
+count_total_open_trades() =>
+    math.abs(strategy.position_size)
+
+// Check if direction is allowed for new trades
+can_trade_direction(direction) =>
+    allowed = false
+    if trade_direction == "Long Only"
+        allowed := direction == "long"
+    else if trade_direction == "Short Only"
+        allowed := direction == "short"
+    else if trade_direction == "Both"
+        if not direction_blocked
+            allowed := true
+        else
+            // Only allow same direction as current open trades
+            allowed := direction == current_direction
+    allowed
+
+// Check if support level had recent stop loss
+had_recent_support_stop_loss(level, tolerance_percent = 0.1) =>
+    recent_stop = false
+    if array.size(recent_support_stop_levels) > 0
+        for i = 0 to array.size(recent_support_stop_levels) - 1
+            if i < array.size(recent_support_stop_bars)
+                stop_level = array.get(recent_support_stop_levels, i)
+                stop_bar = array.get(recent_support_stop_bars, i)
+                bars_since_stop = bar_index - stop_bar
+                
+                // Check if current level is close to recent stop level and within prevention window
+                level_diff_percent = math.abs(level - stop_level) / stop_level * 100
+                if level_diff_percent <= tolerance_percent and bars_since_stop <= prevent_reentry_bars
+                    recent_stop := true
+                    break
+    recent_stop
+
+// Check if resistance level had recent stop loss
+had_recent_resistance_stop_loss(level, tolerance_percent = 0.1) =>
+    recent_stop = false
+    if array.size(recent_resistance_stop_levels) > 0
+        for i = 0 to array.size(recent_resistance_stop_levels) - 1
+            if i < array.size(recent_resistance_stop_bars)
+                stop_level = array.get(recent_resistance_stop_levels, i)
+                stop_bar = array.get(recent_resistance_stop_bars, i)
+                bars_since_stop = bar_index - stop_bar
+                
+                // Check if current level is close to recent stop level and within prevention window
+                level_diff_percent = math.abs(level - stop_level) / stop_level * 100
+                if level_diff_percent <= tolerance_percent and bars_since_stop <= resistance_prevent_reentry_bars
+                    recent_stop := true
+                    break
+    recent_stop
+
+// =============================================================================
+// SUPPORT STRATEGY FUNCTIONS
+// =============================================================================
+
+// Check if candle touches support level AND closes above it
+touches_support_level(index, support_level) =>
+    low[index] <= support_level and close[index] > support_level
+
+// Check separation candles between support formation and current candle
+check_separation_candles(support_formation_bar, support_level) =>
+    // Calculate number of candles between formation and current candle
+    bars_since_formation = bar_index - support_formation_bar
+    candles_between = bars_since_formation - 1
+    
+    // Only check if we have the required minimum separation candles
+    // Remove the restriction about not touching support - separation candles can touch/wick through support
+    candles_between >= min_separation_candles and candles_between <= max_separation_candles
+
+// Track support touches (call this every bar)
+track_support_touches() =>
+    if array.size(support_levels) > 0
+        for i = 0 to array.size(support_levels) - 1
+            // Ensure arrays exist and have this index
+            if i < array.size(support_formation_bars) and i < array.size(support_used) and 
+               i < array.size(support_touched_bars) and i < array.size(support_pending_entry)
+                
+                support_level = array.get(support_levels, i)
+                formation_bar = array.get(support_formation_bars, i)
+                already_used = array.get(support_used, i)
+                
+                // Check if current candle touches support and hasn't been used
+                if not already_used and touches_support_level(0, support_level)
+                    // Check separation candles
+                    separation_valid = check_separation_candles(formation_bar, support_level)
+                    if separation_valid
+                        // Only mark as touched if not already pending entry (first touch only)
+                        current_pending_entry = array.get(support_pending_entry, i)
+                        if not current_pending_entry
+                            // Mark this support as touched and pending entry evaluation
+                            array.set(support_touched_bars, i, bar_index)
+                            array.set(support_pending_entry, i, true)
+                            
+                           
+// Check for support entry opportunities (evaluate candles after touches)
+check_support_entry() =>
+    entry_found = false
+    entry_support_level = 0.0
+    entry_support_index = -1
+    
+    if array.size(support_levels) > 0 and array.size(support_touched_bars) > 0 and array.size(support_pending_entry) > 0
+        for i = 0 to array.size(support_levels) - 1
+            // Ensure all arrays have this index
+            if i < array.size(support_formation_bars) and i < array.size(support_used) and i < array.size(support_touched_bars) and i < array.size(support_pending_entry)
+                support_level = array.get(support_levels, i)
+                formation_bar = array.get(support_formation_bars, i)
+                already_used = array.get(support_used, i)
+                touched_bar = array.get(support_touched_bars, i)
+                pending_entry = array.get(support_pending_entry, i)
+                
+                // Check if support was touched within the entry window and is pending entry evaluation
+                if not already_used and pending_entry and touched_bar >= 0
+                    bars_since_touch = bar_index - touched_bar
+                    
+                    // Check if we're within the entry window
+                    if bars_since_touch >= 1 and bars_since_touch <= entry_window_candles
+                        current_close = close[0]
+                        current_open = open[0]
+                        closes_above_support = current_close > support_level
+                        
+                        // CRITICAL: Entry candle must be bullish to confirm support bounce
+                        is_bullish_candle = current_close > current_open
+                        
+                        body_size = get_body_size(0)
+                        top_wick = get_top_wick_size(0)
+                        wick_ratio = body_size > 0 ? (top_wick / body_size) : 0
+                        wick_valid = wick_ratio <= 0.50
+                        
+                        // Check body size requirement - Use candle range instead of close price
+                        candle_range = high[0] - low[0]
+                        body_percent = candle_range > 0 ? (body_size / candle_range) * 100 : 0
+                        meets_body_requirement = body_percent >= min_candle_body_percent
+                        
+                        // Check Volume Force conditions for long entry
+                        histogram_above_plot = vf_histogram > vf_plot
+                        
+                        // Check if S&R conditions are met but Volume Force conditions aren't
+                        sr_conditions_met = closes_above_support and is_bullish_candle and wick_valid and meets_body_requirement
+                        if sr_conditions_met and not histogram_above_plot
+                            label.new(bar_index, low[0], "S&R Long Signal\nVF: " + str.tostring(vf_histogram) + " vs " + str.tostring(vf_plot), 
+                                    color=color.blue, textcolor=color.white, style=label.style_label_up)
+                            // Clear the pending entry flag since we're canceling this signal
+                            array.set(support_pending_entry, i, false)
+                        
+                        all_conditions_met = sr_conditions_met and histogram_above_plot
+                        
+                        if all_conditions_met
+                            entry_found := true
+                            entry_support_level := support_level
+                            entry_support_index := i
+                            break
+                        
+                    else if bars_since_touch > entry_window_candles
+                        // Entry window has expired, clear the pending entry flag
+                        array.set(support_pending_entry, i, false)
+    
+    [entry_found, entry_support_level, entry_support_index]
+
+// =============================================================================
+// RESISTANCE STRATEGY FUNCTIONS
+// =============================================================================
+
+// Check if candle touches resistance level with upward price action (for resistance test)
+touches_resistance_level(index, resistance_level) =>
+    high[index] >= resistance_level and close[index] >= resistance_level
+
+// Check separation candles between resistance formation and current candle
+check_resistance_separation_candles(resistance_formation_bar, resistance_level) =>
+    // Calculate number of candles between formation and current candle
+    bars_since_formation = bar_index - resistance_formation_bar
+    candles_between = bars_since_formation - 1
+    
+    // Only check if we have the required minimum separation candles
+    candles_between >= resistance_min_separation_candles and candles_between <= resistance_max_separation_candles
+
+// Track resistance touches (call this every bar)
+track_resistance_touches() =>
+    if array.size(resistance_levels) > 0
+        for i = 0 to array.size(resistance_levels) - 1
+            // Ensure arrays exist and have this index
+            if i < array.size(resistance_formation_bars) and i < array.size(resistance_used) and 
+               i < array.size(resistance_touched_bars) and i < array.size(resistance_pending_entry)
+                
+                resistance_level = array.get(resistance_levels, i)
+                formation_bar = array.get(resistance_formation_bars, i)
+                already_used = array.get(resistance_used, i)
+                
+                // Check if current candle touches resistance and hasn't been used
+                if not already_used and touches_resistance_level(0, resistance_level)
+                    // Check separation candles
+                    separation_valid = check_resistance_separation_candles(formation_bar, resistance_level)
+                    
+                    if separation_valid
+                        // Only mark as touched if not already pending entry (first touch only)
+                        current_pending_entry = array.get(resistance_pending_entry, i)
+                        if not current_pending_entry
+                            // Mark this resistance as touched and pending entry evaluation
+                            array.set(resistance_touched_bars, i, bar_index)
+                            array.set(resistance_pending_entry, i, true)
+                            
+                           
+// Check for resistance entry opportunities (evaluate candles after touches)
+check_resistance_entry() =>
+    entry_found = false
+    entry_resistance_level = 0.0
+    entry_resistance_index = -1
+    
+    if array.size(resistance_levels) > 0 and array.size(resistance_touched_bars) > 0 and array.size(resistance_pending_entry) > 0
+        for i = 0 to array.size(resistance_levels) - 1
+            // Ensure all arrays have this index
+            if i < array.size(resistance_formation_bars) and i < array.size(resistance_used) and i < array.size(resistance_touched_bars) and i < array.size(resistance_pending_entry)
+                resistance_level = array.get(resistance_levels, i)
+                formation_bar = array.get(resistance_formation_bars, i)
+                already_used = array.get(resistance_used, i)
+                touched_bar = array.get(resistance_touched_bars, i)
+                pending_entry = array.get(resistance_pending_entry, i)
+                
+                // Check if resistance was touched within the entry window and is pending entry evaluation
+                if not already_used and pending_entry and touched_bar >= 0
+                    bars_since_touch = bar_index - touched_bar
+                    
+                    // Check if we're within the entry window
+                    if bars_since_touch >= 1 and bars_since_touch <= resistance_entry_window_candles
+                        current_close = close[0]
+                        current_open = open[0]
+                        closes_below_resistance = current_close < resistance_level
+                        
+                        // CRITICAL: Entry candle must be bearish to confirm resistance rejection
+                        is_bearish_candle = current_close < current_open
+                        
+                        body_size = get_body_size(0)
+                        bottom_wick = get_bottom_wick_size(0)
+                        wick_ratio = body_size > 0 ? (bottom_wick / body_size) : 0
+                        wick_valid = wick_ratio <= 0.50
+                        
+                        // Check body size requirement - Use candle range
+                        candle_range = high[0] - low[0]
+                        body_percent = candle_range > 0 ? (body_size / candle_range) * 100 : 0
+                        meets_body_requirement = body_percent >= resistance_min_candle_body_percent
+                        
+                        // Check Volume Force conditions for short entry
+                        histogram_below_plot = vf_histogram < vf_plot
+                        
+                        // Check if S&R conditions are met but Volume Force conditions aren't
+                        sr_conditions_met = closes_below_resistance and is_bearish_candle and wick_valid and meets_body_requirement
+                        if sr_conditions_met and not histogram_below_plot
+                            label.new(bar_index, high[0], "S&R Short Signal\nVF: " + str.tostring(vf_histogram) + " vs " + str.tostring(vf_plot), 
+                                    color=color.blue, textcolor=color.white, style=label.style_label_down)
+                            // Clear the pending entry flag since we're canceling this signal
+                            array.set(resistance_pending_entry, i, false)
+                        
+                        all_conditions_met = sr_conditions_met and histogram_below_plot
+
+                        if all_conditions_met
+                            entry_found := true
+                            entry_resistance_level := resistance_level
+                            entry_resistance_index := i
+                            break
+                        
+                    else if bars_since_touch > resistance_entry_window_candles
+                        // Entry window has expired, clear the pending entry flag
+                        array.set(resistance_pending_entry, i, false)
+    
+    [entry_found, entry_resistance_level, entry_resistance_index]
+
+// =============================================================================
+// TIME FUNCTIONS
+// =============================================================================
+
+// Convert time string to minutes since midnight
+time_to_minutes(time_str) =>
+    hour_str = str.substring(time_str, 0, 2)
+    minute_str = str.substring(time_str, 3, 5)
+    hour_val = str.tonumber(hour_str)
+    minute_val = str.tonumber(minute_str)
+    hour_val * 60 + minute_val
+
+// Check if current time is within specified range (New York time)
+is_in_time_range(start_time_str, end_time_str) =>
+    // Get current bar's time and convert to New York timezone
+    current_hour = hour(time, "America/New_York")
+    current_minute = minute(time, "America/New_York")
+    current_minutes = current_hour * 60 + current_minute
+    
+    start_minutes = time_to_minutes(start_time_str)
+    end_minutes = time_to_minutes(end_time_str)
+    
+    if start_minutes <= end_minutes
+        // Same day range
+        current_minutes >= start_minutes and current_minutes <= end_minutes
+    else
+        // Overnight range (crosses midnight)
+        current_minutes >= start_minutes or current_minutes <= end_minutes
+
+// Check if we should detect S/R levels
+is_sr_detection_time = is_in_time_range(sr_start_time, sr_end_time)
+
+// Check if it's time to close all trades and stop new entries
+is_closeout_time = is_in_time_range(daily_closeout_time, "23:59")
+
+// Check if we can execute long and short trades separately (but not after close-out time)
+is_long_trading_time = is_in_time_range(long_trade_start_time, long_trade_end_time) and not is_closeout_time
+is_short_trading_time = is_in_time_range(short_trade_start_time, short_trade_end_time) and not is_closeout_time
+
+// =============================================================================
+// MAIN EXECUTION
+// =============================================================================
+
+if barstate.isconfirmed
+    // Update Volume Force values
+    vf_histogram := volume_force_histogram
+    vf_plot := volume_force_plot
+
+    // Update trade counts in global scope (cannot modify global vars in functions)
+    long_trades_count := math.round(count_open_long_trades())
+    short_trades_count := math.round(count_open_short_trades())
+    
+    // Direction blocking logic in global scope
+    if long_trades_count > 0 and short_trades_count == 0
+        current_direction := "long"
+        direction_blocked := true
+    else if short_trades_count > 0 and long_trades_count == 0
+        current_direction := "short"
+        direction_blocked := true
+    else if long_trades_count == 0 and short_trades_count == 0
+        current_direction := na
+        direction_blocked := false
+    // If somehow both are open (shouldn't happen), block everything
+    else if long_trades_count > 0 and short_trades_count > 0
+        direction_blocked := true
+
+    // Daily close-out: Close all trades at specified time
+    if is_closeout_time and (strategy.position_size != 0)
+        strategy.close_all("Daily Close-Out")
+        
+        // Add debug label for close-out
+        label.new(bar_index, close[0], "DAILY CLOSE-OUT\nAll trades closed", 
+                  color=color.purple, textcolor=color.white, size=size.normal, style=label.style_label_center)
+    
+    // Only detect S/R levels during specified hours
+    if is_sr_detection_time
+        draw_levels()
+    
+    // Track touches every bar during trading hours
+    if is_long_trading_time
+        track_support_touches()
+        track_resistance_touches()
+    
+    // Check for entry signals (only during trading hours)
+    if is_long_trading_time
+        // Check for long entry signals
+        if not long_entry_signaled and can_trade_direction("long")
+            [long_entry_found, support_level, support_index] = check_support_entry()
+            if long_entry_found
+                // Check if we can open a new long trade
+                current_long_trades = count_open_long_trades()
+                can_open_trade = current_long_trades < max_simultaneous_long_trades
+                
+                // Check if this level had a recent stop loss
+                recent_stop_at_level = had_recent_support_stop_loss(support_level)
+                
+                if can_open_trade and not recent_stop_at_level
+                    long_entry_signaled := true
+                    long_entry_price := close[0]
+                    used_support_index := support_index
+                    long_trade_counter := long_trade_counter + 1
+                    
+                    // Mark this support level as used
+                    array.set(support_used, support_index, true)
+                    
+                    // Calculate stop loss (low of previous candle)
+                    long_stop_loss := low[1]
+                    
+                    // Apply stop loss buffer if specified
+                    if stop_loss_buffer_percent > 0
+                        original_risk = long_entry_price - long_stop_loss
+                        buffer_amount = original_risk * (stop_loss_buffer_percent / 100)
+                        long_stop_loss := long_stop_loss - buffer_amount
+                    
+                    // Calculate take profit
+                    risk = long_entry_price - long_stop_loss
+                    long_take_profit := long_entry_price + (risk * take_profit_multiple_long)
+                    
+                    // Add debug label for entry signal
+                    label.new(bar_index, close[0], "LONG ENTRY SIGNAL #" + str.tostring(long_trade_counter), 
+                              color=color.lime, textcolor=color.black, size=size.normal)
+
+    if is_short_trading_time
+        // Track resistance touches during short trading hours
+        track_resistance_touches()
+        
+        // Check for short entry signals
+        if not short_entry_signaled and can_trade_direction("short")
+            [short_entry_found, resistance_level, resistance_index] = check_resistance_entry()
+            
+            if short_entry_found
+                // Check if we can open a new short trade
+                current_short_trades = count_open_short_trades()
+                can_open_trade = current_short_trades < max_simultaneous_short_trades
+                
+                // Check if this level had a recent stop loss
+                recent_stop_at_level = had_recent_resistance_stop_loss(resistance_level)
+                
+                if can_open_trade and not recent_stop_at_level
+                    short_entry_signaled := true
+                    short_entry_price := close[0]
+                    used_resistance_index := resistance_index
+                    short_trade_counter := short_trade_counter + 1
+                    
+                    // Mark this resistance level as used
+                    array.set(resistance_used, resistance_index, true)
+                    
+                    // Calculate stop loss (high of previous candle)
+                    short_stop_loss := high[1]
+                    
+                    // Apply stop loss buffer if specified
+                    if stop_loss_buffer_percent > 0
+                        original_risk = short_stop_loss - short_entry_price
+                        buffer_amount = original_risk * (stop_loss_buffer_percent / 100)
+                        short_stop_loss := short_stop_loss + buffer_amount
+                    
+                    // Calculate take profit
+                    risk = short_stop_loss - short_entry_price
+                    short_take_profit := short_entry_price - (risk * take_profit_multiple_short)
+                    
+                    
+// Execute long trades on new bar if entry was signaled
+if barstate.isconfirmed and long_entry_signaled and is_long_trading_time
+    // Create unique trade ID
+    long_trade_id = "Long_" + str.tostring(long_trade_counter)
+    
+    strategy.entry(long_trade_id, strategy.long)
+    strategy.exit("LongExit_" + str.tostring(long_trade_counter), long_trade_id, stop=long_stop_loss, limit=long_take_profit)
+    
+    // Add debug label for actual trade entry
+    label.new(bar_index, close[0], "LONG ENTERED #" + str.tostring(long_trade_counter), 
+              color=color.yellow, textcolor=color.black, size=size.normal)
+    
+    // Reset signals
+    long_entry_signaled := false
+
+// Execute short trades on new bar if entry was signaled
+if barstate.isconfirmed and short_entry_signaled and is_short_trading_time
+    // Create unique trade ID
+    short_trade_id = "Short_" + str.tostring(short_trade_counter)
+    
+    strategy.entry(short_trade_id, strategy.short)
+    strategy.exit("ShortExit_" + str.tostring(short_trade_counter), short_trade_id, stop=short_stop_loss, limit=short_take_profit)
+    
+   
+    // Reset signals
+    short_entry_signaled := false
+
+// Track when long stop losses occur
+if strategy.position_size[1] > 0 and strategy.position_size == 0
+    // Long position was just closed - likely a stop loss
+    if not na(long_stop_loss)
+        array.push(recent_support_stop_levels, long_stop_loss)
+        array.push(recent_support_stop_bars, bar_index)
+        
+        // Keep only recent stop losses (last 20)
+        if array.size(recent_support_stop_levels) > 20
+            array.shift(recent_support_stop_levels)
+            array.shift(recent_support_stop_bars)
+
+// Track when short stop losses occur
+if strategy.position_size[1] < 0 and strategy.position_size == 0
+    // Short position was just closed - likely a stop loss
+    if not na(short_stop_loss)
+        array.push(recent_resistance_stop_levels, short_stop_loss)
+        array.push(recent_resistance_stop_bars, bar_index)
+        
+        // Keep only recent stop losses (last 20)
+        if array.size(recent_resistance_stop_levels) > 20
+            array.shift(recent_resistance_stop_levels)
+            array.shift(recent_resistance_stop_bars)

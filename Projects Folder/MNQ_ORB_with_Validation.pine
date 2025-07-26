@@ -1,0 +1,288 @@
+//@version=5
+strategy("MNQ ORB with Validation", overlay=true, max_boxes_count=500, max_lines_count=500, 
+         default_qty_type=strategy.percent_of_equity, default_qty_value=100)
+
+// ===== TIME SETTINGS =====
+or_start_time = input.string("09:30", "Opening Range Start Time", 
+    options=["09:30", "09:35", "09:40", "09:45", "09:50", "09:55", "10:00", "10:05", "10:10", "10:15", "10:20", "10:25", "10:30"], 
+    group="Time Settings")
+or_end_time = input.string("09:45", "Opening Range End Time", 
+    options=["09:35", "09:40", "09:45", "09:50", "09:55", "10:00", "10:05", "10:10", "10:15", "10:20", "10:25", "10:30", "10:35"], 
+    group="Time Settings")
+session_start_time = input.string("09:45", "Trading Session Start Time", 
+    options=["09:45", "09:50", "09:55", "10:00", "10:05", "10:10", "10:15", "10:20", "10:25", "10:30", "10:35", "10:40", "10:45", "10:50", "10:55", "11:00", "11:05", "11:10", "11:15", "11:20", "11:25", "11:30", "11:35", "11:40", "11:45", "11:50", "11:55", "12:00", "12:05", "12:10", "12:15", "12:20", "12:25", "12:30", "12:35", "12:40", "12:45", "12:50", "12:55", "13:00", "13:05", "13:10", "13:15", "13:20", "13:25", "13:30", "13:35", "13:40", "13:45", "13:50", "13:55", "14:00"], 
+    group="Time Settings")
+session_end_time = input.string("14:00", "Trading Session End Time", 
+    options=["10:00", "10:05", "10:10", "10:15", "10:20", "10:25", "10:30", "10:35", "10:40", "10:45", "10:50", "10:55", "11:00", "11:05", "11:10", "11:15", "11:20", "11:25", "11:30", "11:35", "11:40", "11:45", "11:50", "11:55", "12:00", "12:05", "12:10", "12:15", "12:20", "12:25", "12:30", "12:35", "12:40", "12:45", "12:50", "12:55", "13:00", "13:05", "13:10", "13:15", "13:20", "13:25", "13:30", "13:35", "13:40", "13:45", "13:50", "13:55", "14:00", "14:05", "14:10", "14:15", "14:20", "14:25", "14:30", "14:35", "14:40", "14:45", "14:50", "14:55", "15:00"], 
+    group="Time Settings")
+auto_close_time = input.string("15:50", "All Trades Close Time", 
+    options=["14:00", "14:05", "14:10", "14:15", "14:20", "14:25", "14:30", "14:35", "14:40", "14:45", "14:50", "14:55", "15:00", "15:05", "15:10", "15:15", "15:20", "15:25", "15:30", "15:35", "15:40", "15:45", "15:50", "15:55"], 
+    group="Time Settings")
+
+// ===== STYLE SETTINGS =====
+or_box_color = input.color(color.red, "Opening Range Box Color", group="Style Settings")
+session_box_color = input.color(color.green, "Trading Session Box Color", group="Style Settings")
+box_border_width = input.int(2, "Box Border Width", minval=1, maxval=10, group="Style Settings")
+
+// ===== STRATEGY SETTINGS =====
+execution_timeframe = input.string("15", "Execution Timeframe", options=["1", "3", "5", "15"], group="Strategy Settings")
+
+// ===== CONFLUENCE SETTINGS =====
+// EMA Confluence
+use_ema_confluence = input.bool(true, "Use EMA Confluence", group="Confluence Settings")
+ema_fast_length = input.int(9, "Fast EMA Length", minval=1, group="Confluence Settings")
+ema_slow_length = input.int(21, "Slow EMA Length", minval=1, group="Confluence Settings")
+
+// ADX + DI Confluence
+use_adx_confluence = input.bool(true, "Use ADX + DI Confluence", group="Confluence Settings")
+adx_length = input.int(14, "ADX Length", minval=1, step=1, group="Confluence Settings")
+adx_threshold = input.int(25, "ADX Threshold", minval=5, step=5, group="Confluence Settings")
+
+// ===== RISK MANAGEMENT =====
+trailing_trigger_ticks = input.int(75, "Trailing Stop Trigger (Ticks)", minval=1, step=1, group="Risk Management")
+trailing_distance_ticks = input.int(25, "Trailing Stop Distance (Ticks)", minval=1, step=1, group="Risk Management")
+use_take_profit = input.bool(true, "Use Take Profit", group="Risk Management")
+tp_multiplier = input.float(1.0, "TP Multiplier (x SL Distance)", minval=0.1, step=0.1, group="Risk Management")
+
+// ===== TIME CONVERSION FUNCTIONS =====
+time_to_minutes(time_str) =>
+    time_no_colon = str.replace(time_str, ":", "")
+    time_num = str.tonumber(time_no_colon)
+    hours = math.floor(time_num / 100)
+    minutes = time_num % 100
+    hours * 60 + minutes
+
+current_time_minutes() =>
+    current_hour = hour(time, "America/New_York")
+    current_minute = minute(time, "America/New_York")
+    current_hour * 60 + current_minute
+
+is_in_time_range(start_time, end_time) =>
+    current_minutes = current_time_minutes()
+    start_minutes = time_to_minutes(start_time)
+    end_minutes = time_to_minutes(end_time)
+    current_minutes >= start_minutes and current_minutes <= end_minutes
+
+// ===== OPENING RANGE CALCULATION =====
+var float or_high = na
+var float or_low = na
+var bool or_calculated = false
+var int or_start_bar = na
+var int or_end_bar = na
+
+// Reset daily variables
+if dayofweek(time, "America/New_York") != dayofweek(time[1], "America/New_York")
+    or_high := na
+    or_low := na
+    or_calculated := false
+    or_start_bar := na
+    or_end_bar := na
+
+// Calculate opening range
+if is_in_time_range(or_start_time, or_end_time) and not or_calculated
+    if na(or_high) or na(or_low)
+        or_high := high
+        or_low := low
+        or_start_bar := bar_index
+    else
+        or_high := math.max(or_high, high)
+        or_low := math.min(or_low, low)
+else if not is_in_time_range(or_start_time, or_end_time) and not na(or_high) and not or_calculated
+    or_calculated := true
+    or_end_bar := bar_index
+
+// ===== CONFLUENCE INDICATORS =====
+// EMA Confluence
+ema_fast = ta.ema(close, ema_fast_length)
+ema_slow = ta.ema(close, ema_slow_length)
+ema_bullish = ema_fast > ema_slow
+ema_bearish = ema_fast < ema_slow
+
+// ADX + DI Confluence
+// Custom ADX calculation since ta.adx might not be available
+smoothing = adx_length
+dirmov = ta.rma(math.max(high - high[1], 0), smoothing) - ta.rma(math.max(low[1] - low, 0), smoothing)
+truerange = ta.rma(ta.tr, smoothing)
+di_plus = 100 * ta.rma(math.max(high - high[1], 0), smoothing) / truerange
+di_minus = 100 * ta.rma(math.max(low[1] - low, 0), smoothing) / truerange
+dx = 100 * math.abs(di_plus - di_minus) / (di_plus + di_minus)
+adx_value = ta.rma(dx, smoothing)
+adx_trending = adx_value > adx_threshold
+adx_bullish = di_plus > di_minus
+adx_bearish = di_minus > di_plus
+
+// ===== ENTRY CONDITIONS =====
+// Check if all confluence conditions are met
+long_confluence_ok = true
+short_confluence_ok = true
+
+if use_ema_confluence
+    long_confluence_ok := long_confluence_ok and ema_bullish
+    short_confluence_ok := short_confluence_ok and ema_bearish
+
+if use_adx_confluence
+    long_confluence_ok := long_confluence_ok and adx_trending and adx_bullish
+    short_confluence_ok := short_confluence_ok and adx_trending and adx_bearish
+
+// Entry conditions
+is_trading_session = is_in_time_range(session_start_time, session_end_time)
+is_close_time = is_in_time_range(auto_close_time, "23:59")
+
+// Track if we've traded today
+var bool traded_today = false
+if dayofweek(time, "America/New_York") != dayofweek(time[1], "America/New_York")
+    traded_today := false
+
+// Get execution timeframe data for entry conditions
+exec_tf_close = request.security(syminfo.tickerid, execution_timeframe, close, lookahead=barmerge.lookahead_off)
+exec_tf_close_prev = request.security(syminfo.tickerid, execution_timeframe, close[1], lookahead=barmerge.lookahead_off)
+
+// Check if we have a new candle close on the execution timeframe
+new_candle_close = exec_tf_close != exec_tf_close_prev
+
+// Long entry: execution TF close above OR high with confluence
+long_entry_condition = or_calculated and not na(or_high) and exec_tf_close > or_high and 
+                      new_candle_close and long_confluence_ok and is_trading_session and 
+                      not traded_today and strategy.position_size == 0
+
+// Short entry: execution TF close below OR low with confluence  
+short_entry_condition = or_calculated and not na(or_low) and exec_tf_close < or_low and 
+                       new_candle_close and short_confluence_ok and is_trading_session and 
+                       not traded_today and strategy.position_size == 0
+
+// ===== TRADE EXECUTION =====
+var float entry_price = na
+var float stop_loss = na
+var float take_profit = na
+var float trailing_stop = na
+var bool trailing_active = false
+
+// Long Entry
+if long_entry_condition
+    strategy.entry("Long", strategy.long)
+    entry_price := exec_tf_close
+    stop_loss := or_low
+    sl_distance = entry_price - stop_loss
+    take_profit := use_take_profit ? entry_price + (sl_distance * tp_multiplier) : na
+    trailing_stop := na
+    trailing_active := false
+    traded_today := true
+    
+// Short Entry
+if short_entry_condition
+    strategy.entry("Short", strategy.short)
+    entry_price := exec_tf_close
+    stop_loss := or_high
+    sl_distance = stop_loss - entry_price
+    take_profit := use_take_profit ? entry_price - (sl_distance * tp_multiplier) : na
+    trailing_stop := na
+    trailing_active := false
+    traded_today := true
+
+// ===== TRAILING STOP LOGIC =====
+if strategy.position_size > 0  // Long position
+    profit_ticks = (close - entry_price) / syminfo.mintick
+    if profit_ticks >= trailing_trigger_ticks and not trailing_active
+        trailing_active := true
+        trailing_stop := high - (trailing_distance_ticks * syminfo.mintick)
+    else if trailing_active
+        new_trailing_stop = high - (trailing_distance_ticks * syminfo.mintick)
+        trailing_stop := math.max(trailing_stop, new_trailing_stop)
+
+if strategy.position_size < 0  // Short position
+    profit_ticks = (entry_price - close) / syminfo.mintick
+    if profit_ticks >= trailing_trigger_ticks and not trailing_active
+        trailing_active := true
+        trailing_stop := low + (trailing_distance_ticks * syminfo.mintick)
+    else if trailing_active
+        new_trailing_stop = low + (trailing_distance_ticks * syminfo.mintick)
+        trailing_stop := math.min(trailing_stop, new_trailing_stop)
+
+// ===== EXIT LOGIC =====
+// Long exits
+if strategy.position_size > 0
+    if trailing_active and not na(trailing_stop)
+        strategy.exit("Long Exit", "Long", stop=trailing_stop, limit=take_profit)
+    else
+        strategy.exit("Long Exit", "Long", stop=stop_loss, limit=take_profit)
+
+// Short exits
+if strategy.position_size < 0
+    if trailing_active and not na(trailing_stop)
+        strategy.exit("Short Exit", "Short", stop=trailing_stop, limit=take_profit)
+    else
+        strategy.exit("Short Exit", "Short", stop=stop_loss, limit=take_profit)
+
+// Force close at auto close time
+if is_close_time and strategy.position_size != 0
+    strategy.close_all("Auto Close")
+
+// ===== VISUAL ELEMENTS =====
+// Draw Opening Range Box
+if or_calculated and not na(or_start_bar) and not na(or_end_bar)
+    or_box = box.new(or_start_bar, or_high, or_end_bar, or_low, 
+                     border_color=or_box_color, bgcolor=color.new(color.white, 100), 
+                     border_width=box_border_width, extend=extend.none)
+
+// Draw Trading Session Box (price range based on OR)
+session_start_minutes = time_to_minutes(session_start_time)
+session_end_minutes = time_to_minutes(session_end_time)
+
+// Find session start and end bars
+var int session_start_bar = na
+var int session_end_bar = na
+
+if is_in_time_range(session_start_time, session_start_time) and na(session_start_bar)
+    session_start_bar := bar_index
+    
+if not is_in_time_range(session_start_time, session_end_time) and not na(session_start_bar) and na(session_end_bar)
+    session_end_bar := bar_index
+
+if dayofweek(time, "America/New_York") != dayofweek(time[1], "America/New_York")
+    session_start_bar := na
+    session_end_bar := na
+
+// Draw session box
+if not na(session_start_bar) and not na(session_end_bar) and or_calculated
+    session_box = box.new(session_start_bar, or_high, session_end_bar, or_low,
+                         border_color=session_box_color, bgcolor=color.new(color.white, 100),
+                         border_width=box_border_width)
+
+// ===== PLOTTING =====
+// Plot OR levels
+plot(or_calculated ? or_high : na, "OR High", color=color.red, linewidth=2, style=plot.style_line)
+plot(or_calculated ? or_low : na, "OR Low", color=color.red, linewidth=2, style=plot.style_line)
+
+// Plot entry signals
+plotshape(long_entry_condition, "Long Entry", shape.triangleup, location.belowbar, color.green, size=size.normal)
+plotshape(short_entry_condition, "Short Entry", shape.triangledown, location.abovebar, color.red, size=size.normal)
+
+// Plot trailing stop
+plot(trailing_active ? trailing_stop : na, "Trailing Stop", color=color.orange, linewidth=2, style=plot.style_circles)
+
+// ===== TABLE FOR CONFLUENCE STATUS =====
+if barstate.islast
+    var table confluence_table = table.new(position.top_right, 2, 6, bgcolor=color.white, border_width=1)
+    
+    table.cell(confluence_table, 0, 0, "Confluence", bgcolor=color.gray, text_color=color.white)
+    table.cell(confluence_table, 1, 0, "Status", bgcolor=color.gray, text_color=color.white)
+    
+    table.cell(confluence_table, 0, 1, "EMA Trend", bgcolor=color.white)
+    table.cell(confluence_table, 1, 1, use_ema_confluence ? (ema_bullish ? "Bullish" : "Bearish") : "Off", 
+               bgcolor=color.white, text_color=use_ema_confluence ? (ema_bullish ? color.green : color.red) : color.gray)
+    
+    table.cell(confluence_table, 0, 2, "ADX Trend", bgcolor=color.white)
+    table.cell(confluence_table, 1, 2, use_adx_confluence ? (adx_trending ? (adx_bullish ? "Bull" : "Bear") : "No Trend") : "Off",
+               bgcolor=color.white, text_color=use_adx_confluence ? (adx_trending ? (adx_bullish ? color.green : color.red) : color.orange) : color.gray)
+    
+    table.cell(confluence_table, 0, 3, "OR Status", bgcolor=color.white)
+    table.cell(confluence_table, 1, 3, or_calculated ? "Calculated" : "Pending", 
+               bgcolor=color.white, text_color=or_calculated ? color.green : color.orange)
+    
+    table.cell(confluence_table, 0, 4, "Session", bgcolor=color.white)
+    table.cell(confluence_table, 1, 4, is_trading_session ? "Active" : "Inactive", 
+               bgcolor=color.white, text_color=is_trading_session ? color.green : color.red)
+               
+    table.cell(confluence_table, 0, 5, "Daily Trade", bgcolor=color.white)
+    table.cell(confluence_table, 1, 5, traded_today ? "Done" : "Available", 
+               bgcolor=color.white, text_color=traded_today ? color.red : color.green) 

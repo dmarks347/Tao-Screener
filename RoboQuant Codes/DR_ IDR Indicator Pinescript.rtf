@@ -1,0 +1,530 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2822
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fnil\fcharset0 Menlo-Regular;\f1\fnil\fcharset0 Menlo-Bold;}
+{\colortbl;\red255\green255\blue255;\red109\green109\blue109;\red13\green13\blue13;\red255\green255\blue255;
+\red74\green135\blue243;\red46\green126\blue46;\red56\green178\blue151;\red211\green211\blue211;\red242\green100\blue109;
+\red240\green106\blue20;\red170\green77\blue188;\red38\green95\blue242;}
+{\*\expandedcolortbl;;\cssrgb\c50196\c50196\c50196;\cssrgb\c5882\c5882\c5882;\cssrgb\c100000\c100000\c100000;
+\cssrgb\c35686\c61176\c96471;\cssrgb\c21961\c55686\c23529;\cssrgb\c25882\c74118\c65882;\cssrgb\c85882\c85882\c85882;\cssrgb\c96863\c48627\c50196;
+\cssrgb\c96078\c49804\c9020;\cssrgb\c72941\c40784\c78431;\cssrgb\c19216\c47451\c96078;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\deftab720
+\pard\pardeftab720\partightenfactor0
+
+\f0\fs26 \cf2 \cb3 \expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 //
+\f1\b @version=
+\f0\b0 5\cf4 \cb1 \strokec4 \
+\pard\pardeftab720\partightenfactor0
+\cf5 \cb3 \strokec5 indicator\cf4 \strokec4 (\cf6 \strokec6 'DR/IDR V1.5'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 overlay\cf7 \strokec7 =\cf9 \strokec9 true\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 max_lines_count\cf7 \strokec7 =\cf10 \strokec10 500\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 max_boxes_count\cf7 \strokec7 =\cf10 \strokec10 500\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 max_labels_count\cf7 \strokec7 =\cf10 \strokec10 500\cf4 \strokec4 )\cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf7 \cb3 \strokec7 import\cf4 \strokec4  \cf5 \strokec5 PineCoders/VisibleChart/4\cf4 \strokec4  \cf7 \strokec7 as\cf4 \strokec4  \cf11 \strokec11 PCchart\cf4 \cb1 \strokec4 \
+\
+\pard\pardeftab720\partightenfactor0
+\cf2 \cb3 \strokec2 // This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/\cf4 \cb1 \strokec4 \
+\cf2 \cb3 \strokec2 // \'a9 TheMas7er and bmistiaen\cf4 \cb1 \strokec4 \
+\
+\cf2 \cb3 \strokec2 // Input options\cf4 \cb1 \strokec4 \
+\cf2 \cb3 \strokec2 // \{\cf4 \cb1 \strokec4 \
+\pard\pardeftab720\partightenfactor0
+\cf8 \cb3 \strokec8 LS0\cf7 \strokec7 =\cf6 \strokec6 'Solid'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 LS1\cf7 \strokec7 =\cf6 \strokec6 'Dashed'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 LS2\cf7 \strokec7 =\cf6 \strokec6 'Dotted'\cf4 \cb1 \strokec4 \
+\cf8 \cb3 \strokec8 BX0\cf7 \strokec7 =\cf6 \strokec6 'DR'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 BX1\cf7 \strokec7 =\cf6 \strokec6 'IDR'\cf4 \cb1 \strokec4 \
+\cf8 \cb3 \strokec8 XL0\cf7 \strokec7 =\cf6 \strokec6 'Follow Time'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 XL1\cf7 \strokec7 =\cf6 \strokec6 'Session End'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 XL2\cf7 \strokec7 =\cf6 \strokec6 'ADR End'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 XL3\cf7 \strokec7 =\cf6 \strokec6 'ODR End'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 XL4\cf7 \strokec7 =\cf6 \strokec6 'RDR End'\cf4 \cb1 \strokec4 \
+\cf8 \cb3 \strokec8 STDLT0\cf7 \strokec7 =\cf6 \strokec6 'Dynamic'\cf7 \strokec7 ,\cf8 \strokec8 STDLT1\cf7 \strokec7 =\cf6 \strokec6 'Static'\cf4 \cb1 \strokec4 \
+\pard\pardeftab720\partightenfactor0
+\cf2 \cb3 \strokec2 // \} Input options\cf4 \cb1 \strokec4 \
+\
+\pard\pardeftab720\partightenfactor0
+\cf8 \cb3 \strokec8 TIMEZONE\cf4 \strokec4  \cf7 \strokec7 =\cf4 \strokec4  \cf6 \strokec6 'America/New_York'\cf4 \cb1 \strokec4 \
+\cf8 \cb3 \strokec8 ONE_HOUR\cf4 \strokec4  \cf7 \strokec7 =\cf4 \strokec4  \cf10 \strokec10 3600\cf7 \strokec7 *\cf10 \strokec10 1000\cf4 \cb1 \strokec4 \
+\cf8 \cb3 \strokec8 ONE_DAY\cf4 \strokec4  \cf7 \strokec7 =\cf4 \strokec4  \cf10 \strokec10 24\cf7 \strokec7 *\cf8 \strokec8 ONE_HOUR\cf4 \cb1 \strokec4 \
+\
+\pard\pardeftab720\partightenfactor0
+\cf2 \cb3 \strokec2 // Inputs\cf4 \cb1 \strokec4 \
+\cf2 \cb3 \strokec2 // \{\cf4 \cb1 \strokec4 \
+\pard\pardeftab720\partightenfactor0
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  \cf8 \strokec8 GRP1\cf4 \strokec4  \cf7 \strokec7 =\cf4 \strokec4  \cf6 \strokec6 "Time Settings"\cf4 \cb1 \strokec4 \
+\pard\pardeftab720\partightenfactor0
+\cf2 \cb3 \strokec2 //timings\cf4 \cb1 \strokec4 \
+\pard\pardeftab720\partightenfactor0
+\cf8 \cb3 \strokec8 exchangeOffset\cf4 \strokec4       \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.int\cf4 \strokec4 (\cf10 \strokec10 0\cf7 \strokec7 ,\cf6 \strokec6 "Exchange Offset (hours)"\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP1\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 regularTime\cf4 \strokec4          \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.session\cf4 \strokec4 (\cf6 \strokec6 '0930-1030'\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'RDR Time'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP1\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 regularExtend\cf4 \strokec4        \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.session\cf4 \strokec4 (\cf6 \strokec6 '1030-1600'\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'RDR Lines Time'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP1\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 afterTime\cf4 \strokec4            \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.session\cf4 \strokec4 (\cf6 \strokec6 '1930-2030'\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'ADR Time'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP1\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 afterExtend\cf4 \strokec4          \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.session\cf4 \strokec4 (\cf6 \strokec6 '2030-0200'\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'ADR Lines Time'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP1\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 overnightTime\cf4 \strokec4        \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.session\cf4 \strokec4 (\cf6 \strokec6 '0300-0400'\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'ODR Time'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP1\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 overnightExtend\cf4 \strokec4      \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.session\cf4 \strokec4 (\cf6 \strokec6 '0400-0830'\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'ODR Lines Time'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP1\cf4 \strokec4 )\cb1 \
+\
+\pard\pardeftab720\partightenfactor0
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  \cf8 \strokec8 GRP2\cf4 \strokec4  \cf7 \strokec7 =\cf4 \strokec4  \cf6 \strokec6 "General Settings"\cf4 \cb1 \strokec4 \
+\pard\pardeftab720\partightenfactor0
+\cf2 \cb3 \strokec2 //lines\cf4 \cb1 \strokec4 \
+\pard\pardeftab720\partightenfactor0
+\cf8 \cb3 \strokec8 showRegular\cf4 \strokec4          \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.bool\cf4 \strokec4 (\cf9 \strokec9 true\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'Regular'\cf7 \strokec7 ,\cf4 \strokec4                                  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP2\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 inline\cf7 \strokec7 =\cf6 \strokec6 'session'\cf7 \strokec7 ,\cf4 \strokec4        \cf8 \strokec8 tooltip\cf7 \strokec7 =\cf6 \strokec6 'Show Regular and/or After and/or Overnight session'\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 showAfter\cf4 \strokec4            \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.bool\cf4 \strokec4 (\cf9 \strokec9 true\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'After'\cf7 \strokec7 ,\cf4 \strokec4                                    \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP2\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 inline\cf7 \strokec7 =\cf6 \strokec6 'session'\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 showOvernight\cf4 \strokec4        \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.bool\cf4 \strokec4 (\cf9 \strokec9 true\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'Overnight'\cf7 \strokec7 ,\cf4 \strokec4                                \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP2\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 inline\cf7 \strokec7 =\cf6 \strokec6 'session'\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 drlines\cf4 \strokec4              \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.bool\cf4 \strokec4 (\cf9 \strokec9 true\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'Show DR Lines ?'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP2\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 idrlines\cf4 \strokec4             \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.bool\cf4 \strokec4 (\cf9 \strokec9 true\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'Show IDR Lines ?'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP2\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 middledrline\cf4 \strokec4         \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.bool\cf4 \strokec4 (\cf9 \strokec9 false\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'Show Middle DR Line ?'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP2\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 middleidrline\cf4 \strokec4        \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.bool\cf4 \strokec4 (\cf9 \strokec9 true\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'Show Middle IDR Line ?'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP2\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 openline\cf4 \strokec4             \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.bool\cf4 \strokec4 (\cf9 \strokec9 true\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'Show Opening Line ?'\cf7 \strokec7 ,\cf4 \strokec4                      \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP2\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 inline\cf7 \strokec7 =\cf6 \strokec6 'openline'\cf7 \strokec7 ,\cf4 \strokec4       \cf8 \strokec8 tooltip\cf7 \strokec7 =\cf6 \strokec6 'Shows the Opening line of the Defining Range.\\n- Extend: Extends the drawing of the Opening line into the RDR/ODR Lines Time.'\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 extendopLines\cf4 \strokec4        \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.bool\cf4 \strokec4 (\cf9 \strokec9 true\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'Extend'\cf7 \strokec7 ,\cf4 \strokec4                                   \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP2\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 inline\cf7 \strokec7 =\cf6 \strokec6 'openline'\cf4 \strokec4 ) \cf2 \strokec2 // Extend, follow price\cf4 \cb1 \strokec4 \
+\cf8 \cb3 \strokec8 extendopLinesType\cf4 \strokec4    \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.string\cf4 \strokec4 (\cf8 \strokec8 XL1\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 ''\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 options\cf7 \strokec7 =\cf4 \strokec4 [\cf8 \strokec8 XL0\cf7 \strokec7 ,\cf8 \strokec8 XL1\cf7 \strokec7 ,\cf8 \strokec8 XL2\cf7 \strokec7 ,\cf8 \strokec8 XL3\cf7 \strokec7 ,\cf8 \strokec8 XL4\cf4 \strokec4 ]\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP2\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 inline\cf7 \strokec7 =\cf6 \strokec6 'openline'\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 showBackground\cf4 \strokec4       \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.bool\cf4 \strokec4 (\cf9 \strokec9 true\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'Show DR/IDR Box ?'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP2\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 boxType\cf4 \strokec4              \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.string\cf4 \strokec4 (\cf8 \strokec8 BX1\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'Box DR or IDR ?'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 options\cf7 \strokec7 =\cf4 \strokec4 [\cf8 \strokec8 BX0\cf7 \strokec7 ,\cf8 \strokec8 BX1\cf4 \strokec4 ]\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP2\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 extenddrLines\cf4 \strokec4        \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.bool\cf4 \strokec4 (\cf9 \strokec9 true\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'Extend DR Lines ?'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP2\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 extendidrLines\cf4 \strokec4       \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.bool\cf4 \strokec4 (\cf9 \strokec9 true\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'Extend IDR Lines ?'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP2\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 showAllHistory\cf4 \strokec4       \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.bool\cf4 \strokec4 (\cf9 \strokec9 false\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'Show complete history ?'\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'Might cause a slight drawing delay when panning/moving/zooming the chart.'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP2\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 useBoxColors\cf4 \strokec4         \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.bool\cf4 \strokec4 (\cf9 \strokec9 false\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'Box color based on open and close'\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'If unchecked, it will default to the selected Box Background Color'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP2\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 extendToEndOfRDR\cf4 \strokec4     \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.bool\cf4 \strokec4 (\cf9 \strokec9 false\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'Extend lines of all ranges to end of most recent Regular session?'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP2\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 showStdLines\cf4 \strokec4                 \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.bool\cf4 \strokec4 (\cf9 \strokec9 true\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'Show STD Lines ?'\cf7 \strokec7 ,\cf4 \strokec4                         \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP2\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 inline\cf7 \strokec7 =\cf6 \strokec6 'stdlines'\cf7 \strokec7 ,\cf4 \strokec4       \cf8 \strokec8 tooltip\cf7 \strokec7 =\cf6 \strokec6 'Shows the Standard Deviation lines in 0.5 IDR range increments.\\n- All = Shows all the STD lines on previous sessions.\\n- Labels = Show STD level labels.\\n- Dropdown = Choose between Dynamic or Static STD lines.'\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 showStdLinesAll\cf4 \strokec4              \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.bool\cf4 \strokec4 (\cf9 \strokec9 true\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'All'\cf7 \strokec7 ,\cf4 \strokec4                                      \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP2\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 inline\cf7 \strokec7 =\cf6 \strokec6 'stdlines'\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 showStdLineLabels\cf4 \strokec4            \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.bool\cf4 \strokec4 (\cf9 \strokec9 true\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'Labels'\cf7 \strokec7 ,\cf4 \strokec4                                   \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP2\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 inline\cf7 \strokec7 =\cf6 \strokec6 'stdlines'\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 stdLineType\cf4 \strokec4                  \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.string\cf4 \strokec4 (\cf8 \strokec8 STDLT1\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 ''\cf7 \strokec7 ,\cf4 \strokec4  [\cf8 \strokec8 STDLT0\cf7 \strokec7 ,\cf8 \strokec8 STDLT1\cf4 \strokec4 ]\cf7 \strokec7 ,\cf4 \strokec4                    \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP2\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 inline\cf7 \strokec7 =\cf6 \strokec6 'stdlines'\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 stdLineDynamicExtraPos\cf4 \strokec4       \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.int\cf4 \strokec4 (\cf10 \strokec10 0\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'Dynamic (+)'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 minval\cf7 \strokec7 =\cf10 \strokec10 0\cf7 \strokec7 ,\cf4 \strokec4                        \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP2\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 inline\cf7 \strokec7 =\cf6 \strokec6 'stdlinedynamic'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 tooltip\cf7 \strokec7 =\cf6 \strokec6 'Dynamic STD Lines.\\nDynamically draw STD lines around price action. Progresses with price.\\n- (+) = Number of positive extra levels to draw in addition to the lines that are automatically drawn around price action.\\n- (-) = Number of negative extra levels to draw in addition to the lines that are automatically drawn around price action.\\n- Auto = Automatically determine number of STD lines that need to be drawn. Follows price action.'\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 stdLineDynamicExtraNeg\cf4 \strokec4       \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.int\cf4 \strokec4 (\cf10 \strokec10 0\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 '(-)'\cf7 \strokec7 ,\cf4 \strokec4          \cf8 \strokec8 minval\cf7 \strokec7 =\cf10 \strokec10 0\cf7 \strokec7 ,\cf4 \strokec4                        \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP2\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 inline\cf7 \strokec7 =\cf6 \strokec6 'stdlinedynamic'\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 stdLineDynamicExtraAuto\cf4 \strokec4      \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.bool\cf4 \strokec4 (\cf9 \strokec9 false\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'Auto'\cf7 \strokec7 ,\cf4 \strokec4                                    \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP2\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 inline\cf7 \strokec7 =\cf6 \strokec6 'stdlinedynamic'\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 stdLineStaticExtraPos\cf4 \strokec4        \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.int\cf4 \strokec4 (\cf10 \strokec10 10\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'Static (+)'\cf7 \strokec7 ,\cf4 \strokec4   \cf8 \strokec8 minval\cf7 \strokec7 =\cf10 \strokec10 0\cf7 \strokec7 ,\cf4 \strokec4                        \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP2\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 inline\cf7 \strokec7 =\cf6 \strokec6 'stdlinestatic'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 tooltip\cf7 \strokec7 =\cf6 \strokec6 'Static STD Lines.\\nDraws a fixed number of STD lines.\\n- (+) = Number of positive levels to draw.\\n- (-) = Number of negative levels to draw.'\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 stdLineStaticExtraNeg\cf4 \strokec4        \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.int\cf4 \strokec4 (\cf10 \strokec10 10\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 '(-)'\cf7 \strokec7 ,\cf4 \strokec4          \cf8 \strokec8 minval\cf7 \strokec7 =\cf10 \strokec10 0\cf7 \strokec7 ,\cf4 \strokec4                        \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP2\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 inline\cf7 \strokec7 =\cf6 \strokec6 'stdlinestatic'\cf4 \strokec4 )\cb1 \
+\
+\
+\pard\pardeftab720\partightenfactor0
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  \cf8 \strokec8 GRP3\cf4 \strokec4  \cf7 \strokec7 =\cf4 \strokec4  \cf6 \strokec6 "Styles"\cf4 \cb1 \strokec4 \
+\pard\pardeftab720\partightenfactor0
+\cf8 \cb3 \strokec8 linesWidth\cf4 \strokec4           \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.int\cf4 \strokec4 (\cf10 \strokec10 1\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'Box And Lines Width ?'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 minval\cf7 \strokec7 =\cf10 \strokec10 1\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 maxval\cf7 \strokec7 =\cf10 \strokec10 4\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP3\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 drLineColor\cf4 \strokec4          \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.color\cf4 \strokec4 (\cf9 \strokec9 color.gray\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'DR Line Color'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP3\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 inline\cf7 \strokec7 =\cf6 \strokec6 'drline'\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 drLineStyle\cf4 \strokec4          \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.string\cf4 \strokec4 (\cf8 \strokec8 LS0\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'Style'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 options\cf7 \strokec7 =\cf4 \strokec4 [\cf8 \strokec8 LS0\cf7 \strokec7 ,\cf8 \strokec8 LS1\cf7 \strokec7 ,\cf8 \strokec8 LS2\cf4 \strokec4 ]\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP3\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 inline\cf7 \strokec7 =\cf6 \strokec6 'drline'\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 idrLineColor\cf4 \strokec4         \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.color\cf4 \strokec4 (\cf9 \strokec9 color.red\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'IDR Line Color'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP3\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 inline\cf7 \strokec7 =\cf6 \strokec6 'idrline'\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 idrLineStyle\cf4 \strokec4         \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.string\cf4 \strokec4 (\cf8 \strokec8 LS1\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'Style'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 options\cf7 \strokec7 =\cf4 \strokec4 [\cf8 \strokec8 LS0\cf7 \strokec7 ,\cf8 \strokec8 LS1\cf7 \strokec7 ,\cf8 \strokec8 LS2\cf4 \strokec4 ]\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP3\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 inline\cf7 \strokec7 =\cf6 \strokec6 'idrline'\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 middleLineColor\cf4 \strokec4      \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.color\cf4 \strokec4 (\cf9 \strokec9 color.gray\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'Middle Line Color'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP3\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 inline\cf7 \strokec7 =\cf6 \strokec6 'midline'\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 middleLineStyle\cf4 \strokec4      \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.string\cf4 \strokec4 (\cf8 \strokec8 LS2\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'Style'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 options\cf7 \strokec7 =\cf4 \strokec4 [\cf8 \strokec8 LS0\cf7 \strokec7 ,\cf8 \strokec8 LS1\cf7 \strokec7 ,\cf8 \strokec8 LS2\cf4 \strokec4 ]\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP3\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 inline\cf7 \strokec7 =\cf6 \strokec6 'midline'\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 opLineColor\cf4 \strokec4          \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.color\cf4 \strokec4 (\cf9 \strokec9 color.green\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'Opening Line'\cf7 \strokec7 ,\cf4 \strokec4                   \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP3\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 inline\cf7 \strokec7 =\cf6 \strokec6 'openline'\cf7 \strokec7 ,\cf4 \strokec4       \cf8 \strokec8 tooltip\cf7 \strokec7 =\cf6 \strokec6 'Opening line:\\n- Color\\n- Style\\n- Width'\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 opLineStyle\cf4 \strokec4          \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.string\cf4 \strokec4 (\cf8 \strokec8 LS2\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 ''\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 options\cf7 \strokec7 =\cf4 \strokec4 [\cf8 \strokec8 LS0\cf7 \strokec7 ,\cf8 \strokec8 LS1\cf7 \strokec7 ,\cf8 \strokec8 LS2\cf4 \strokec4 ]\cf7 \strokec7 ,\cf4 \strokec4                 \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP3\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 inline\cf7 \strokec7 =\cf6 \strokec6 'openline'\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 stdLineColor\cf4 \strokec4         \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.color\cf4 \strokec4 (\cf9 \strokec9 color.gray\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'STD Lines'\cf7 \strokec7 ,\cf4 \strokec4                   \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP3\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 inline\cf7 \strokec7 =\cf6 \strokec6 'stdline'\cf7 \strokec7 ,\cf4 \strokec4       \cf8 \strokec8 tooltip\cf7 \strokec7 =\cf6 \strokec6 'Standard deviation lines:\\n- Color\\n- Style\\n- Width'\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 stdLineStyle\cf4 \strokec4         \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.string\cf4 \strokec4 (\cf8 \strokec8 LS2\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 ''\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 options\cf7 \strokec7 =\cf4 \strokec4 [\cf8 \strokec8 LS0\cf7 \strokec7 ,\cf8 \strokec8 LS1\cf7 \strokec7 ,\cf8 \strokec8 LS2\cf4 \strokec4 ]\cf7 \strokec7 ,\cf4 \strokec4                 \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP3\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 inline\cf7 \strokec7 =\cf6 \strokec6 'stdline'\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 backgroundColor\cf4 \strokec4      \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.color\cf4 \strokec4 (\cf5 \strokec5 color.new\cf4 \strokec4 (\cf9 \strokec9 color.gray\cf7 \strokec7 ,\cf4 \strokec4  \cf10 \strokec10 75\cf4 \strokec4 )\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'Box Background Color'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP3\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 boxBorderSize\cf4 \strokec4        \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.int\cf4 \strokec4 (\cf10 \strokec10 0\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 title\cf7 \strokec7 =\cf6 \strokec6 "Box border size"\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 minval\cf7 \strokec7 =\cf10 \strokec10 0\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP3\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 upBoxColor\cf4 \strokec4           \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.color\cf4 \strokec4 (\cf5 \strokec5 color.new\cf4 \strokec4 (\cf9 \strokec9 color.green\cf7 \strokec7 ,\cf4 \strokec4  \cf10 \strokec10 85\cf4 \strokec4 )\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'Up box'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP3\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 inline\cf7 \strokec7 =\cf6 \strokec6 'upbox'\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 upBorderColor\cf4 \strokec4        \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.color\cf4 \strokec4 (\cf9 \strokec9 color.green\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'border'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP3\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 inline\cf7 \strokec7 =\cf6 \strokec6 'upbox'\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 downBoxColor\cf4 \strokec4         \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.color\cf4 \strokec4 (\cf5 \strokec5 color.new\cf4 \strokec4 (\cf9 \strokec9 color.red\cf7 \strokec7 ,\cf4 \strokec4  \cf10 \strokec10 85\cf4 \strokec4 )\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'Down box'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP3\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 inline\cf7 \strokec7 =\cf6 \strokec6 'downbox'\cf4 \strokec4 )\cb1 \
+\cf8 \cb3 \strokec8 downBorderColor\cf4 \strokec4      \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 input.color\cf4 \strokec4 (\cf9 \strokec9 color.red\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 'border'\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 group\cf7 \strokec7 =\cf8 \strokec8 GRP3\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 inline\cf7 \strokec7 =\cf6 \strokec6 'downbox'\cf4 \strokec4 )\cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf2 \cb3 \strokec2 // \} Inputs\cf4 \cb1 \strokec4 \
+\pard\pardeftab720\partightenfactor0
+\cf4 \cb3  \cb1 \
+\cb3  \cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf2 \cb3 \strokec2 // Constants\cf4 \cb1 \strokec4 \
+\cf2 \cb3 \strokec2 // \{\cf4 \cb1 \strokec4 \
+\pard\pardeftab720\partightenfactor0
+\cf8 \cb3 \strokec8 exchangeOffsetMS\cf4 \strokec4  \cf7 \strokec7 =\cf4 \strokec4  \cf8 \strokec8 exchangeOffset\cf4 \strokec4  \cf7 \strokec7 *\cf4 \strokec4  \cf10 \strokec10 3600000\cf4 \cb1 \strokec4 \
+\pard\pardeftab720\partightenfactor0
+\cf2 \cb3 \strokec2 // \} Constants\cf4 \cb1 \strokec4 \
+\pard\pardeftab720\partightenfactor0
+\cf4 \cb3  \cb1 \
+\cb3  \cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf2 \cb3 \strokec2 // Variables \{\cf4 \cb1 \strokec4 \
+\pard\pardeftab720\partightenfactor0
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 int
+\f0\b0 \cf4 \strokec4      \cf8 \strokec8 startTime\cf4 \strokec4            \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 int
+\f0\b0 \cf4 \strokec4      \cf8 \strokec8 endTime\cf4 \strokec4              \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 string
+\f0\b0 \cf4 \strokec4   \cf8 \strokec8 currentSession\cf4 \strokec4       \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 line
+\f0\b0 \cf4 \strokec4     \cf8 \strokec8 lowrdrl\cf4 \strokec4              \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 line
+\f0\b0 \cf4 \strokec4     \cf8 \strokec8 highrdrl\cf4 \strokec4             \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 line
+\f0\b0 \cf4 \strokec4     \cf8 \strokec8 lowridrl\cf4 \strokec4             \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 line
+\f0\b0 \cf4 \strokec4     \cf8 \strokec8 highridrl\cf4 \strokec4            \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 line
+\f0\b0 \cf4 \strokec4     \cf8 \strokec8 leftrdrl\cf4 \strokec4             \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 line
+\f0\b0 \cf4 \strokec4     \cf8 \strokec8 rightrdrl\cf4 \strokec4            \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 line
+\f0\b0 \cf4 \strokec4     \cf8 \strokec8 middlerdrl\cf4 \strokec4           \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 line
+\f0\b0 \cf4 \strokec4     \cf8 \strokec8 middleridrl\cf4 \strokec4          \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 line
+\f0\b0 \cf4 \strokec4     \cf8 \strokec8 drLineOpen\cf4 \strokec4           \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 box
+\f0\b0 \cf4 \strokec4      \cf8 \strokec8 bgBox\cf4 \strokec4                \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 line
+\f0\b0 \cf4 \strokec4 [] \cf8 \strokec8 stdLines\cf4 \strokec4                                  \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 array.new\cf4 \strokec4 <
+\f1\b \cf7 \strokec7 line
+\f0\b0 \cf4 \strokec4 >()\cb1 \
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 float
+\f0\b0 \cf4 \strokec4 [] \cf8 \strokec8 stdLevels\cf4 \strokec4                                \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 array.new\cf4 \strokec4 <
+\f1\b \cf7 \strokec7 float
+\f0\b0 \cf4 \strokec4 >()\cb1 \
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 label
+\f0\b0 \cf4 \strokec4 [] \cf8 \strokec8 stdLabels\cf4 \strokec4                                \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 array.new\cf4 \strokec4 <
+\f1\b \cf7 \strokec7 label
+\f0\b0 \cf4 \strokec4 >()\cb1 \
+\
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 float
+\f0\b0 \cf4 \strokec4    \cf8 \strokec8 rdrlow\cf4 \strokec4               \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 float
+\f0\b0 \cf4 \strokec4    \cf8 \strokec8 rdrhigh\cf4 \strokec4              \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 float
+\f0\b0 \cf4 \strokec4    \cf8 \strokec8 ridrlow\cf4 \strokec4              \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 float
+\f0\b0 \cf4 \strokec4    \cf8 \strokec8 ridrhigh\cf4 \strokec4             \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 float
+\f0\b0 \cf4 \strokec4    \cf8 \strokec8 rdrmiddle\cf4 \strokec4            \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 float
+\f0\b0 \cf4 \strokec4    \cf8 \strokec8 ridrmiddle\cf4 \strokec4           \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 float
+\f0\b0 \cf4 \strokec4    \cf8 \strokec8 sessionOpen\cf4 \strokec4          \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 float
+\f0\b0 \cf4 \strokec4    \cf8 \strokec8 regidrlow\cf4 \strokec4              \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 float
+\f0\b0 \cf4 \strokec4    \cf8 \strokec8 regidrhigh\cf4 \strokec4             \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 float
+\f0\b0 \cf4 \strokec4    \cf8 \strokec8 sessionHigh\cf4 \strokec4                              \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 float
+\f0\b0 \cf4 \strokec4    \cf8 \strokec8 sessionLow\cf4 \strokec4                               \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 int
+\f0\b0 \cf4 \strokec4      \cf8 \strokec8 stdLinesStartTime\cf4 \strokec4                        \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 int
+\f0\b0 \cf4 \strokec4      \cf8 \strokec8 stdLinesStopTime\cf4 \strokec4                         \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\
+\cf7 \cb3 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 bool
+\f0\b0 \cf4 \strokec4     \cf8 \strokec8 use_m5\cf4 \strokec4               \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 false\cf4 \cb1 \strokec4 \
+\pard\pardeftab720\partightenfactor0
+\cf2 \cb3 \strokec2 // \} Variables\cf4 \cb1 \strokec4 \
+\pard\pardeftab720\partightenfactor0
+\cf4 \cb3  \cb1 \
+\cb3  \cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf2 \cb3 \strokec2 // Functions \{\cf4 \cb1 \strokec4 \
+\pard\pardeftab720\partightenfactor0
+\cf12 \cb3 \strokec12 f_insession\cf4 \strokec4 (\cf8 \strokec8 _session\cf4 \strokec4 ) \cf7 \strokec7 =>\cf4 \strokec4  \cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf4 \cb3     \cf7 \strokec7 not\cf4 \strokec4  \cf5 \strokec5 na\cf4 \strokec4 (\cf5 \strokec5 time\cf4 \strokec4 (\cf9 \strokec9 timeframe.period\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _session\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 TIMEZONE\cf4 \strokec4 ))\cb1 \
+\cb3    \cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf12 \cb3 \strokec12 f_timestrToHM\cf4 \strokec4 (\cf8 \strokec8 _timeStr\cf4 \strokec4 ) \cf7 \strokec7 =>\cf4 \cb1 \strokec4 \
+\pard\pardeftab720\partightenfactor0
+\cf4 \cb3     \cf7 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 int
+\f0\b0 \cf4 \strokec4      \cf8 \strokec8 hourInt\cf4 \strokec4    \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\cb3     \cf7 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 int
+\f0\b0 \cf4 \strokec4      \cf8 \strokec8 minuteInt\cf4 \strokec4  \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\cb3     \cf7 \strokec7 if\cf4 \strokec4  \cf5 \strokec5 str.length\cf4 \strokec4 (\cf8 \strokec8 _timeStr\cf4 \strokec4 ) \cf7 \strokec7 ==\cf4 \strokec4  \cf10 \strokec10 4\cf4 \cb1 \strokec4 \
+\cb3         \cf8 \strokec8 hourInt\cf4 \strokec4    \cf7 \strokec7 :=\cf4 \strokec4  \cf5 \strokec5 int\cf4 \strokec4 (\cf5 \strokec5 str.tonumber\cf4 \strokec4 (\cf5 \strokec5 str.substring\cf4 \strokec4 (\cf8 \strokec8 _timeStr\cf7 \strokec7 ,\cf4 \strokec4  \cf10 \strokec10 0\cf7 \strokec7 ,\cf4 \strokec4  \cf10 \strokec10 2\cf4 \strokec4 )))\cb1 \
+\cb3         \cf8 \strokec8 minuteInt\cf4 \strokec4  \cf7 \strokec7 :=\cf4 \strokec4  \cf5 \strokec5 int\cf4 \strokec4 (\cf5 \strokec5 str.tonumber\cf4 \strokec4 (\cf5 \strokec5 str.substring\cf4 \strokec4 (\cf8 \strokec8 _timeStr\cf7 \strokec7 ,\cf4 \strokec4  \cf10 \strokec10 2\cf7 \strokec7 ,\cf4 \strokec4  \cf10 \strokec10 4\cf4 \strokec4 )))\cb1 \
+\cb3     [\cf8 \strokec8 hourInt\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 minuteInt\cf4 \strokec4 ]\cb1 \
+\
+\pard\pardeftab720\partightenfactor0
+\cf12 \cb3 \strokec12 f_sessionTime\cf4 \strokec4 (\cf8 \strokec8 _session\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _timezone\cf7 \strokec7 =\cf9 \strokec9 syminfo.timezone\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _part\cf4 \strokec4 ) \cf7 \strokec7 =>\cf4 \cb1 \strokec4 \
+\pard\pardeftab720\partightenfactor0
+\cf4 \cb3     \cf7 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 int
+\f0\b0 \cf4 \strokec4  \cf8 \strokec8 ts\cf4 \strokec4  \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\cb3     \cf7 \strokec7 if\cf4 \strokec4  \cf5 \strokec5 str.length\cf4 \strokec4 (\cf8 \strokec8 _session\cf4 \strokec4 ) \cf7 \strokec7 ==\cf4 \strokec4  \cf10 \strokec10 9\cf4 \strokec4  \cf7 \strokec7 and\cf4 \strokec4  (\cf8 \strokec8 _part\cf4 \strokec4  \cf7 \strokec7 ==\cf4 \strokec4  \cf10 \strokec10 0\cf4 \strokec4  \cf7 \strokec7 or\cf4 \strokec4  \cf8 \strokec8 _part\cf4 \strokec4  \cf7 \strokec7 ==\cf4 \strokec4  \cf10 \strokec10 1\cf4 \strokec4 )\cb1 \
+\cb3         \cf8 \strokec8 arraySessionSplit\cf4 \strokec4  \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 str.split\cf4 \strokec4 (\cf8 \strokec8 _session\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 '-'\cf4 \strokec4 )\cb1 \
+\cb3         \cf8 \strokec8 timeStrTo\cf4 \strokec4           \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 array.get\cf4 \strokec4 (\cf8 \strokec8 arraySessionSplit\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _part\cf4 \strokec4 )\cb1 \
+\cb3         [\cf8 \strokec8 hourTo\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 minuteTo\cf4 \strokec4 ] \cf7 \strokec7 =\cf4 \strokec4  \cf12 \strokec12 f_timestrToHM\cf4 \strokec4 (\cf8 \strokec8 timeStrTo\cf4 \strokec4 )\cb1 \
+\cb3         \cf8 \strokec8 ts\cf4 \strokec4  \cf7 \strokec7 :=\cf4 \strokec4  \cf5 \strokec5 timestamp\cf4 \strokec4 (\cf8 \strokec8 _timezone\cf7 \strokec7 ,\cf4 \strokec4  \cf9 \strokec9 year\cf7 \strokec7 ,\cf4 \strokec4  \cf9 \strokec9 month\cf7 \strokec7 ,\cf4 \strokec4  \cf9 \strokec9 dayofmonth\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 hourTo\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 minuteTo\cf4 \strokec4 )\cb1 \
+\cb3     \cf8 \strokec8 ts\cf4 \cb1 \strokec4 \
+\
+\pard\pardeftab720\partightenfactor0
+\cf12 \cb3 \strokec12 f_sessionStartTime\cf4 \strokec4 (\cf8 \strokec8 _session\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _timezone\cf7 \strokec7 =\cf9 \strokec9 syminfo.timezone\cf4 \strokec4 ) \cf7 \strokec7 =>\cf4 \strokec4  \cf12 \strokec12 f_sessionTime\cf4 \strokec4 (\cf8 \strokec8 _session\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _timezone\cf7 \strokec7 ,\cf4 \strokec4  \cf10 \strokec10 0\cf4 \strokec4 )\cb1 \
+\cf12 \cb3 \strokec12 f_sessionStopTime\cf4 \strokec4 (\cf8 \strokec8 _session\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _timezone\cf7 \strokec7 =\cf9 \strokec9 syminfo.timezone\cf4 \strokec4 )  \cf7 \strokec7 =>\cf4 \strokec4  \cf12 \strokec12 f_sessionTime\cf4 \strokec4 (\cf8 \strokec8 _session\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _timezone\cf7 \strokec7 ,\cf4 \strokec4  \cf10 \strokec10 1\cf4 \strokec4 )\cb1 \
+\cf12 \cb3 \strokec12 f_timestamp_to_date\cf4 \strokec4 (
+\f1\b \cf7 \strokec7 int
+\f0\b0 \cf4 \strokec4  \cf8 \strokec8 _ts\cf4 \strokec4  \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf7 \strokec7 ,\cf4 \strokec4  
+\f1\b \cf7 \strokec7 string
+\f0\b0 \cf4 \strokec4  \cf8 \strokec8 _tz\cf4 \strokec4  \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \strokec4 ) \cf7 \strokec7 =>\cf4 \strokec4  \cf5 \strokec5 timestamp\cf4 \strokec4 (\cf8 \strokec8 _tz\cf7 \strokec7 ,\cf4 \strokec4  \cf5 \strokec5 year\cf4 \strokec4 (\cf8 \strokec8 _ts\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _tz\cf4 \strokec4 )\cf7 \strokec7 ,\cf4 \strokec4  \cf5 \strokec5 month\cf4 \strokec4 (\cf8 \strokec8 _ts\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _tz\cf4 \strokec4 )\cf7 \strokec7 ,\cf4 \strokec4  \cf5 \strokec5 dayofmonth\cf4 \strokec4 (\cf8 \strokec8 _ts\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _tz\cf4 \strokec4 ))\cb1 \
+\
+\cf12 \cb3 \strokec12 f_lineStyle\cf4 \strokec4 (\cf8 \strokec8 _inputOption\cf4 \strokec4 ) \cf7 \strokec7 =>\cf4 \cb1 \strokec4 \
+\pard\pardeftab720\partightenfactor0
+\cf4 \cb3     \cf7 \strokec7 switch\cf4 \strokec4 (\cf8 \strokec8 _inputOption\cf4 \strokec4 )\cb1 \
+\cb3         \cf8 \strokec8 LS0\cf4 \strokec4  \cf7 \strokec7 =>\cf4 \strokec4  \cf9 \strokec9 line.style_solid\cf4 \cb1 \strokec4 \
+\cb3         \cf8 \strokec8 LS1\cf4 \strokec4  \cf7 \strokec7 =>\cf4 \strokec4  \cf9 \strokec9 line.style_dashed\cf4 \cb1 \strokec4 \
+\cb3         \cf8 \strokec8 LS2\cf4 \strokec4  \cf7 \strokec7 =>\cf4 \strokec4  \cf9 \strokec9 line.style_dotted\cf4 \cb1 \strokec4 \
+\cb3         \cf7 \strokec7 =>\cf4 \strokec4  \cf9 \strokec9 line.style_solid\cf4 \strokec4  \cb1 \
+\
+\pard\pardeftab720\partightenfactor0
+\cf12 \cb3 \strokec12 f_newline\cf4 \strokec4 (\cf8 \strokec8 _color\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _style\cf4 \strokec4 ) \cf7 \strokec7 =>\cf4 \strokec4  \cf5 \strokec5 line.new\cf4 \strokec4 (\cf9 \strokec9 na\cf7 \strokec7 ,\cf4 \strokec4  \cf9 \strokec9 na\cf7 \strokec7 ,\cf4 \strokec4  \cf9 \strokec9 na\cf7 \strokec7 ,\cf4 \strokec4  \cf9 \strokec9 na\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 xloc\cf7 \strokec7 =\cf9 \strokec9 xloc.bar_time\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 color\cf7 \strokec7 =\cf8 \strokec8 _color\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 style\cf7 \strokec7 =\cf8 \strokec8 _style\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 width\cf7 \strokec7 =\cf8 \strokec8 linesWidth\cf4 \strokec4 )\cb1 \
+\cf12 \cb3 \strokec12 f_newdrline\cf4 \strokec4 ()   \cf7 \strokec7 =>\cf4 \strokec4  \cf12 \strokec12 f_newline\cf4 \strokec4 (\cf8 \strokec8 drLineColor\cf7 \strokec7 ,\cf4 \strokec4  \cf12 \strokec12 f_lineStyle\cf4 \strokec4 (\cf8 \strokec8 drLineStyle\cf4 \strokec4 ))\cb1 \
+\cf12 \cb3 \strokec12 f_newidrline\cf4 \strokec4 ()  \cf7 \strokec7 =>\cf4 \strokec4  \cf12 \strokec12 f_newline\cf4 \strokec4 (\cf8 \strokec8 idrLineColor\cf7 \strokec7 ,\cf4 \strokec4  \cf12 \strokec12 f_lineStyle\cf4 \strokec4 (\cf8 \strokec8 idrLineStyle\cf4 \strokec4 ))\cb1 \
+\cf12 \cb3 \strokec12 f_newmdline\cf4 \strokec4 ()   \cf7 \strokec7 =>\cf4 \strokec4  \cf12 \strokec12 f_newline\cf4 \strokec4 (\cf8 \strokec8 middleLineColor\cf7 \strokec7 ,\cf4 \strokec4  \cf12 \strokec12 f_lineStyle\cf4 \strokec4 (\cf8 \strokec8 middleLineStyle\cf4 \strokec4 )) \cb1 \
+\cf12 \cb3 \strokec12 f_newopline\cf4 \strokec4 ()   \cf7 \strokec7 =>\cf4 \strokec4  \cf12 \strokec12 f_newline\cf4 \strokec4 (\cf8 \strokec8 opLineColor\cf7 \strokec7 ,\cf4 \strokec4  \cf12 \strokec12 f_lineStyle\cf4 \strokec4 (\cf8 \strokec8 opLineStyle\cf4 \strokec4 )) \cb1 \
+\cf12 \cb3 \strokec12 f_newstdine\cf4 \strokec4 ()   \cf7 \strokec7 =>\cf4 \strokec4  \cf12 \strokec12 f_newline\cf4 \strokec4 (\cf8 \strokec8 stdLineColor\cf7 \strokec7 ,\cf4 \strokec4  \cf12 \strokec12 f_lineStyle\cf4 \strokec4 (\cf8 \strokec8 stdLineStyle\cf4 \strokec4 )) \cb1 \
+\
+\
+\cf12 \cb3 \strokec12 f_newbox\cf4 \strokec4 ()      \cf7 \strokec7 =>\cf4 \strokec4  \cf5 \strokec5 box.new\cf4 \strokec4 (\cf9 \strokec9 na\cf7 \strokec7 ,\cf4 \strokec4  \cf9 \strokec9 na\cf7 \strokec7 ,\cf4 \strokec4  \cf9 \strokec9 na\cf7 \strokec7 ,\cf4 \strokec4  \cf9 \strokec9 na\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 xloc\cf7 \strokec7 =\cf9 \strokec9 xloc.bar_time\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 bgcolor\cf7 \strokec7 =\cf8 \strokec8 backgroundColor\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 border_width\cf7 \strokec7 =\cf8 \strokec8 boxBorderSize\cf4 \strokec4 )\cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf4 \cb3  \cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf12 \cb3 \strokec12 f_moveLine\cf4 \strokec4 (\cf8 \strokec8 _line\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _x1\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _y\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _x2\cf4 \strokec4 ) \cf7 \strokec7 =>\cf4 \strokec4  \cf5 \strokec5 line.set_xy1\cf4 \strokec4 (\cf8 \strokec8 _line\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _x1\cf4 \strokec4  \cf7 \strokec7 +\cf4 \strokec4  \cf8 \strokec8 exchangeOffsetMS\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _y\cf4 \strokec4 )\cf7 \strokec7 ,\cf4 \strokec4  \cf5 \strokec5 line.set_xy2\cf4 \strokec4 (\cf8 \strokec8 _line\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _x2\cf4 \strokec4  \cf7 \strokec7 +\cf4 \strokec4  \cf8 \strokec8 exchangeOffsetMS\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _y\cf4 \strokec4 )\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _line\cf4 \cb1 \strokec4 \
+\
+\cf12 \cb3 \strokec12 f_movebox\cf4 \strokec4 (\cf8 \strokec8 _box\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _left\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _top\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _right\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _bottom\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _bordercolor\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _bgcolor\cf4 \strokec4 ) \cf7 \strokec7 =>\cf4 \strokec4  \cf5 \strokec5 box.set_lefttop\cf4 \strokec4 (\cf8 \strokec8 _box\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _left\cf4 \strokec4  \cf7 \strokec7 +\cf4 \strokec4  \cf8 \strokec8 exchangeOffsetMS\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _top\cf4 \strokec4 )\cf7 \strokec7 ,\cf4 \strokec4  \cf5 \strokec5 box.set_rightbottom\cf4 \strokec4 (\cf8 \strokec8 _box\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _right\cf4 \strokec4  \cf7 \strokec7 +\cf4 \strokec4  \cf8 \strokec8 exchangeOffsetMS\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _bottom\cf4 \strokec4 )\cf7 \strokec7 ,\cf4 \strokec4  \cf5 \strokec5 box.set_border_color\cf4 \strokec4 (\cf8 \strokec8 _box\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _bordercolor\cf4 \strokec4 )\cf7 \strokec7 ,\cf4 \strokec4  \cf5 \strokec5 box.set_bgcolor\cf4 \strokec4 (\cf8 \strokec8 _box\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _bgcolor\cf4 \strokec4 )\cb1 \
+\
+\cf12 \cb3 \strokec12 f_newLabel\cf4 \strokec4 () \cf7 \strokec7 =>\cf4 \strokec4  \cf5 \strokec5 label.new\cf4 \strokec4 (\cf9 \strokec9 na\cf7 \strokec7 ,\cf4 \strokec4  \cf9 \strokec9 na\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 ''\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 xloc\cf4 \strokec4  \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 xloc.bar_time\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 yloc\cf7 \strokec7 =\cf9 \strokec9 yloc.price\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 style\cf7 \strokec7 =\cf9 \strokec9 label.style_label_left\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 color\cf7 \strokec7 =\cf5 \strokec5 color\cf4 \strokec4 (\cf9 \strokec9 na\cf4 \strokec4 )\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 textcolor\cf7 \strokec7 =\cf8 \strokec8 stdLineColor\cf4 \strokec4 )\cb1 \
+\cf12 \cb3 \strokec12 f_moveLabel\cf4 \strokec4 (\cf8 \strokec8 _label\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _x\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _y\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _text\cf4 \strokec4 ) \cf7 \strokec7 =>\cf4 \strokec4  \cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf4 \cb3     \cf5 \strokec5 label.set_xy\cf4 \strokec4 (\cf8 \strokec8 _label\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _x\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _y\cf4 \strokec4 )\cb1 \
+\cb3     \cf5 \strokec5 label.set_text\cf4 \strokec4 (\cf8 \strokec8 _label\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _text\cf4 \strokec4 )\cb1 \
+\cb3     \cf8 \strokec8 _label\cf4 \cb1 \strokec4 \
+\
+\pard\pardeftab720\partightenfactor0
+\cf12 \cb3 \strokec12 f_drawStdLine\cf4 \strokec4 (\cf8 \strokec8 _fromTime\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _toTime\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _level\cf7 \strokec7 ,\cf4 \strokec4  
+\f1\b \cf7 \strokec7 float
+\f0\b0 \cf4 \strokec4  \cf8 \strokec8 _stdLabelValue\cf7 \strokec7 =\cf9 \strokec9 na\cf4 \strokec4 ) \cf7 \strokec7 =>\cf4 \cb1 \strokec4 \
+\pard\pardeftab720\partightenfactor0
+\cf4 \cb3     \cf7 \strokec7 if\cf4 \strokec4  \cf7 \strokec7 not\cf4 \strokec4  \cf5 \strokec5 na\cf4 \strokec4 (\cf8 \strokec8 _level\cf4 \strokec4 )\cb1 \
+\cb3         \cf7 \strokec7 if\cf4 \strokec4  \cf7 \strokec7 not\cf4 \strokec4  \cf5 \strokec5 array.includes\cf4 \strokec4 (\cf8 \strokec8 stdLevels\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _level\cf4 \strokec4 )\cb1 \
+\cb3             \cf5 \strokec5 array.push\cf4 \strokec4 (\cf8 \strokec8 stdLevels\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _level\cf4 \strokec4 )\cb1 \
+\cb3             \cf5 \strokec5 array.push\cf4 \strokec4 (\cf8 \strokec8 stdLines\cf7 \strokec7 ,\cf4 \strokec4  \cf12 \strokec12 f_moveLine\cf4 \strokec4 (\cf12 \strokec12 f_newstdine\cf4 \strokec4 ()\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _fromTime\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _level\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _toTime\cf4 \strokec4 ))\cb1 \
+\cb3             \cf7 \strokec7 if\cf4 \strokec4  \cf8 \strokec8 showStdLineLabels\cf4 \cb1 \strokec4 \
+\cb3                 \cf5 \strokec5 array.push\cf4 \strokec4 (\cf8 \strokec8 stdLabels\cf7 \strokec7 ,\cf4 \strokec4  \cf12 \strokec12 f_moveLabel\cf4 \strokec4 (\cf12 \strokec12 f_newLabel\cf4 \strokec4 ()\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _toTime\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _level\cf7 \strokec7 ,\cf4 \strokec4  \cf5 \strokec5 str.format\cf4 \strokec4 (\cf6 \strokec6 '\{0\}'\cf7 \strokec7 ,\cf8 \strokec8 _stdLabelValue\cf4 \strokec4 )))\cb1 \
+\
+\
+\pard\pardeftab720\partightenfactor0
+\cf12 \cb3 \strokec12 f_drawStdLines\cf4 \strokec4 (\cf8 \strokec8 _fromTime\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _toTime\cf7 \strokec7 ,\cf4 \strokec4  
+\f1\b \cf7 \strokec7 bool
+\f0\b0 \cf4 \strokec4  \cf8 \strokec8 _clear\cf4 \strokec4  \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 false\cf4 \strokec4 ) \cf7 \strokec7 =>\cf4 \cb1 \strokec4 \
+\pard\pardeftab720\partightenfactor0
+\cf4 \cb3     \cf7 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 float
+\f0\b0 \cf4 \strokec4    \cf8 \strokec8 stdStepFactor\cf4 \strokec4    \cf7 \strokec7 =\cf4 \strokec4  \cf10 \strokec10 0.5\cf4 \cb1 \strokec4 \
+\cb3     \cf7 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 float
+\f0\b0 \cf4 \strokec4    \cf8 \strokec8 stdStep\cf4 \strokec4          \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\cb3     \cf7 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 float
+\f0\b0 \cf4 \strokec4    \cf8 \strokec8 stdLevel\cf4 \strokec4         \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\cb3     \cf7 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 float
+\f0\b0 \cf4 \strokec4    \cf8 \strokec8 stdLabelValue\cf4 \strokec4    \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\cb3     \cf7 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 int
+\f0\b0 \cf4 \strokec4      \cf8 \strokec8 nrLevels\cf4 \strokec4         \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\cb3     \cf7 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 int
+\f0\b0 \cf4 \strokec4      \cf8 \strokec8 nrLevelsPos\cf4 \strokec4      \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\cb3     \cf7 \strokec7 var\cf4 \strokec4  
+\f1\b \cf7 \strokec7 int
+\f0\b0 \cf4 \strokec4      \cf8 \strokec8 nrLevelsNeg\cf4 \strokec4      \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\
+\cb3     \cf7 \strokec7 if\cf4 \strokec4  \cf8 \strokec8 _clear\cf4 \strokec4  \cf7 \strokec7 and\cf4 \strokec4  \cf7 \strokec7 not\cf4 \strokec4  \cf8 \strokec8 showStdLinesAll\cf4 \strokec4  \cf7 \strokec7 and\cf4 \strokec4  \cf5 \strokec5 array.size\cf4 \strokec4 (\cf8 \strokec8 stdLevels\cf4 \strokec4 ) \cf7 \strokec7 >\cf4 \strokec4  \cf10 \strokec10 0\cf4 \cb1 \strokec4 \
+\cb3         \cf2 \strokec2 // If we don't need to show all the lines, delete them each time we clear. If we do need to show all the previous lines, don't delete them.\cf4 \cb1 \strokec4 \
+\cb3         \cf7 \strokec7 for\cf4 \strokec4  \cf8 \strokec8 tmpIndex\cf4 \strokec4  \cf7 \strokec7 =\cf4 \strokec4  \cf10 \strokec10 0\cf4 \strokec4  \cf7 \strokec7 to\cf4 \strokec4  \cf5 \strokec5 array.size\cf4 \strokec4 (\cf8 \strokec8 stdLines\cf4 \strokec4 )\cf10 \strokec10 -1\cf4 \cb1 \strokec4 \
+\cb3             \cf5 \strokec5 line.delete\cf4 \strokec4 (\cf5 \strokec5 array.get\cf4 \strokec4 (\cf8 \strokec8 stdLines\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 tmpIndex\cf4 \strokec4 ))\cb1 \
+\cb3             \cf7 \strokec7 if\cf4 \strokec4  \cf8 \strokec8 showStdLineLabels\cf4 \cb1 \strokec4 \
+\cb3                 \cf5 \strokec5 label.delete\cf4 \strokec4 (\cf5 \strokec5 array.get\cf4 \strokec4 (\cf8 \strokec8 stdLabels\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 tmpIndex\cf4 \strokec4 ))\cb1 \
+\cb3     \cb1 \
+\cb3     \cf7 \strokec7 if\cf4 \strokec4  \cf8 \strokec8 _clear\cf4 \cb1 \strokec4 \
+\cb3         \cf5 \strokec5 array.clear\cf4 \strokec4 (\cf8 \strokec8 stdLevels\cf4 \strokec4 )\cb1 \
+\cb3         \cf5 \strokec5 array.clear\cf4 \strokec4 (\cf8 \strokec8 stdLines\cf4 \strokec4 )\cb1 \
+\cb3         \cf7 \strokec7 if\cf4 \strokec4  \cf8 \strokec8 showStdLineLabels\cf4 \cb1 \strokec4 \
+\cb3             \cf5 \strokec5 array.clear\cf4 \strokec4 (\cf8 \strokec8 stdLabels\cf4 \strokec4 )\cb1 \
+\
+\cb3     \cf8 \strokec8 stdStep\cf4 \strokec4  \cf7 \strokec7 :=\cf4 \strokec4  \cf5 \strokec5 math.abs\cf4 \strokec4 (\cf8 \strokec8 regidrhigh\cf7 \strokec7 -\cf8 \strokec8 regidrlow\cf4 \strokec4 )  \cf7 \strokec7 *\cf4 \strokec4  \cf8 \strokec8 stdStepFactor\cf4 \cb1 \strokec4 \
+\
+\cb3     \cf7 \strokec7 if\cf4 \strokec4  \cf8 \strokec8 stdStep\cf4 \strokec4  \cf7 \strokec7 !=\cf4 \strokec4  \cf10 \strokec10 0\cf4 \cb1 \strokec4 \
+\
+\cb3         \cf7 \strokec7 switch\cf4 \strokec4  \cf8 \strokec8 stdLineType\cf4 \cb1 \strokec4 \
+\cb3             \cf8 \strokec8 STDLT0\cf4 \strokec4  \cf7 \strokec7 =>\cf4 \strokec4  \cb1 \
+\cb3                 \cf8 \strokec8 nrLevelsPos\cf4 \strokec4  \cf7 \strokec7 :=\cf4 \strokec4  \cf5 \strokec5 math.ceil\cf4 \strokec4 (\cf5 \strokec5 math.max\cf4 \strokec4 (\cf8 \strokec8 sessionHigh\cf4 \strokec4  \cf7 \strokec7 -\cf4 \strokec4  \cf8 \strokec8 regidrhigh\cf7 \strokec7 ,\cf4 \strokec4  \cf10 \strokec10 0\cf4 \strokec4 ) \cf7 \strokec7 /\cf4 \strokec4  \cf8 \strokec8 stdStep\cf4 \strokec4 ) \cf7 \strokec7 +\cf4 \strokec4  (\cf8 \strokec8 stdLineDynamicExtraAuto\cf4 \strokec4  \cf7 \strokec7 ?\cf4 \strokec4  \cf10 \strokec10 0\cf4 \strokec4  \cf7 \strokec7 :\cf4 \strokec4  \cf8 \strokec8 stdLineDynamicExtraPos\cf4 \strokec4 )\cb1 \
+\cb3                 \cf8 \strokec8 nrLevelsNeg\cf4 \strokec4  \cf7 \strokec7 :=\cf4 \strokec4  \cf5 \strokec5 math.ceil\cf4 \strokec4 (\cf5 \strokec5 math.max\cf4 \strokec4 (\cf8 \strokec8 regidrlow\cf4 \strokec4  \cf7 \strokec7 -\cf4 \strokec4  \cf8 \strokec8 sessionLow\cf7 \strokec7 ,\cf4 \strokec4  \cf10 \strokec10 0\cf4 \strokec4 )   \cf7 \strokec7 /\cf4 \strokec4  \cf8 \strokec8 stdStep\cf4 \strokec4 ) \cf7 \strokec7 +\cf4 \strokec4  (\cf8 \strokec8 stdLineDynamicExtraAuto\cf4 \strokec4  \cf7 \strokec7 ?\cf4 \strokec4  \cf10 \strokec10 0\cf4 \strokec4  \cf7 \strokec7 :\cf4 \strokec4  \cf8 \strokec8 stdLineDynamicExtraNeg\cf4 \strokec4 )\cb1 \
+\cb3             \cf8 \strokec8 STDLT1\cf4 \strokec4  \cf7 \strokec7 =>\cf4 \strokec4  \cb1 \
+\cb3                 \cf8 \strokec8 nrLevelsPos\cf4 \strokec4  \cf7 \strokec7 :=\cf4 \strokec4  \cf8 \strokec8 stdLineStaticExtraPos\cf4 \cb1 \strokec4 \
+\cb3                 \cf8 \strokec8 nrLevelsNeg\cf4 \strokec4  \cf7 \strokec7 :=\cf4 \strokec4  \cf8 \strokec8 stdLineStaticExtraNeg\cf4 \cb1 \strokec4 \
+\
+\cb3         \cf2 \strokec2 // Positive lines\cf4 \cb1 \strokec4 \
+\cb3         \cf7 \strokec7 if\cf4 \strokec4  \cf8 \strokec8 nrLevelsPos\cf4 \strokec4  \cf7 \strokec7 >=\cf4 \strokec4  \cf10 \strokec10 1\cf4 \cb1 \strokec4 \
+\cb3             \cf7 \strokec7 for\cf4 \strokec4  \cf8 \strokec8 cnt\cf4 \strokec4  \cf7 \strokec7 =\cf4 \strokec4  \cf10 \strokec10 1\cf4 \strokec4  \cf7 \strokec7 to\cf4 \strokec4  \cf8 \strokec8 nrLevelsPos\cf4 \cb1 \strokec4 \
+\cb3                 \cf8 \strokec8 stdLevel\cf4 \strokec4       \cf7 \strokec7 :=\cf4 \strokec4  \cf8 \strokec8 regidrhigh\cf4 \strokec4  \cf7 \strokec7 +\cf4 \strokec4  (\cf8 \strokec8 cnt\cf4 \strokec4  \cf7 \strokec7 *\cf4 \strokec4  \cf8 \strokec8 stdStep\cf4 \strokec4 )\cb1 \
+\cb3                 \cf8 \strokec8 stdLabelValue\cf4 \strokec4  \cf7 \strokec7 :=\cf4 \strokec4  \cf8 \strokec8 cnt\cf4 \strokec4  \cf7 \strokec7 *\cf4 \strokec4  \cf8 \strokec8 stdStepFactor\cf4 \cb1 \strokec4 \
+\cb3                 \cf12 \strokec12 f_drawStdLine\cf4 \strokec4 (\cf8 \strokec8 _fromTime\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _toTime\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 stdLevel\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 stdLabelValue\cf4 \strokec4 )\cb1 \
+\
+\cb3         \cf2 \strokec2 // Negative lines\cf4 \cb1 \strokec4 \
+\cb3         \cf7 \strokec7 if\cf4 \strokec4  \cf8 \strokec8 nrLevelsNeg\cf4 \strokec4  \cf7 \strokec7 >=\cf4 \strokec4  \cf10 \strokec10 1\cf4 \cb1 \strokec4 \
+\cb3             \cf7 \strokec7 for\cf4 \strokec4  \cf8 \strokec8 cnt\cf4 \strokec4  \cf7 \strokec7 =\cf4 \strokec4  \cf10 \strokec10 1\cf4 \strokec4  \cf7 \strokec7 to\cf4 \strokec4  \cf8 \strokec8 nrLevelsNeg\cf4 \cb1 \strokec4 \
+\cb3                 \cf8 \strokec8 stdLevel\cf4 \strokec4       \cf7 \strokec7 :=\cf4 \strokec4  \cf8 \strokec8 regidrlow\cf4 \strokec4  \cf7 \strokec7 -\cf4 \strokec4  (\cf8 \strokec8 cnt\cf4 \strokec4  \cf7 \strokec7 *\cf4 \strokec4  \cf8 \strokec8 stdStep\cf4 \strokec4 )\cb1 \
+\cb3                 \cf8 \strokec8 stdLabelValue\cf4 \strokec4  \cf7 \strokec7 :=\cf4 \strokec4  \cf8 \strokec8 cnt\cf4 \strokec4  \cf7 \strokec7 *\cf4 \strokec4  (\cf7 \strokec7 -\cf8 \strokec8 stdStepFactor\cf4 \strokec4 )\cb1 \
+\cb3                 \cf12 \strokec12 f_drawStdLine\cf4 \strokec4 (\cf8 \strokec8 _fromTime\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 _toTime\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 stdLevel\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 stdLabelValue\cf4 \strokec4 )\cb1 \
+\
+\pard\pardeftab720\partightenfactor0
+\cf2 \cb3 \strokec2 // \} Functions\cf4 \cb1 \strokec4 \
+\pard\pardeftab720\partightenfactor0
+\cf4 \cb3  \cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf2 \cb3 \strokec2 // Use the 5 minute timeframe if the chart timeframe is lower than 5m\cf4 \cb1 \strokec4 \
+\pard\pardeftab720\partightenfactor0
+\cf7 \cb3 \strokec7 if\cf4 \strokec4  \cf9 \strokec9 barstate.isfirst\cf4 \cb1 \strokec4 \
+\pard\pardeftab720\partightenfactor0
+\cf4 \cb3     \cf8 \strokec8 use_m5\cf4 \strokec4  \cf7 \strokec7 :=\cf4 \strokec4  \cf5 \strokec5 timeframe.in_seconds\cf4 \strokec4 () \cf7 \strokec7 <\cf4 \strokec4  \cf10 \strokec10 300\cf4 \cb1 \strokec4 \
+\cb3  \cb1 \
+\cb3 [\cf8 \strokec8 m5_open\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 m5_high\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 m5_low\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 m5_close\cf4 \strokec4 ] \cf7 \strokec7 =\cf4 \strokec4  \cf5 \strokec5 request.security\cf4 \strokec4 (\cf9 \strokec9 syminfo.tickerid\cf7 \strokec7 ,\cf4 \strokec4  \cf6 \strokec6 '5'\cf7 \strokec7 ,\cf4 \strokec4  [\cf9 \strokec9 open\cf7 \strokec7 ,\cf4 \strokec4  \cf9 \strokec9 high\cf7 \strokec7 ,\cf4 \strokec4  \cf9 \strokec9 low\cf7 \strokec7 ,\cf4 \strokec4  \cf9 \strokec9 close\cf4 \strokec4 ]\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 lookahead\cf4 \strokec4  \cf7 \strokec7 =\cf4 \strokec4  \cf9 \strokec9 barmerge.lookahead_on\cf4 \strokec4 )\cb1 \
+\cb3  \cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf8 \cb3 \strokec8 open_value\cf4 \strokec4   \cf7 \strokec7 =\cf4 \strokec4  \cf8 \strokec8 use_m5\cf4 \strokec4  \cf7 \strokec7 ?\cf4 \strokec4  \cf8 \strokec8 m5_open\cf4 \strokec4   \cf7 \strokec7 :\cf4 \strokec4  \cf9 \strokec9 open\cf4 \cb1 \strokec4 \
+\cf8 \cb3 \strokec8 high_value\cf4 \strokec4   \cf7 \strokec7 =\cf4 \strokec4  \cf8 \strokec8 use_m5\cf4 \strokec4  \cf7 \strokec7 ?\cf4 \strokec4  \cf8 \strokec8 m5_high\cf4 \strokec4   \cf7 \strokec7 :\cf4 \strokec4  \cf9 \strokec9 high\cf4 \cb1 \strokec4 \
+\cf8 \cb3 \strokec8 low_value\cf4 \strokec4    \cf7 \strokec7 =\cf4 \strokec4  \cf8 \strokec8 use_m5\cf4 \strokec4  \cf7 \strokec7 ?\cf4 \strokec4  \cf8 \strokec8 m5_low\cf4 \strokec4    \cf7 \strokec7 :\cf4 \strokec4  \cf9 \strokec9 low\cf4 \cb1 \strokec4 \
+\cf8 \cb3 \strokec8 close_value\cf4 \strokec4  \cf7 \strokec7 =\cf4 \strokec4  \cf8 \strokec8 use_m5\cf4 \strokec4  \cf7 \strokec7 ?\cf4 \strokec4  \cf8 \strokec8 m5_close\cf4 \strokec4  \cf7 \strokec7 :\cf4 \strokec4  \cf9 \strokec9 close\cf4 \cb1 \strokec4 \
+\pard\pardeftab720\partightenfactor0
+\cf4 \cb3  \cb1 \
+\pard\pardeftab720\partightenfactor0
+\cf8 \cb3 \strokec8 inRegularSession\cf4 \strokec4     \cf7 \strokec7 =\cf4 \strokec4  \cf12 \strokec12 f_insession\cf4 \strokec4 (\cf8 \strokec8 regularTime\cf4 \strokec4 )     \cf7 \strokec7 and\cf4 \strokec4  \cf8 \strokec8 showRegular\cf4 \cb1 \strokec4 \
+\cf8 \cb3 \strokec8 inRegularExtend\cf4 \strokec4      \cf7 \strokec7 =\cf4 \strokec4  \cf12 \strokec12 f_insession\cf4 \strokec4 (\cf8 \strokec8 regularExtend\cf4 \strokec4 )   \cf7 \strokec7 and\cf4 \strokec4  \cf8 \strokec8 showRegular\cf4 \cb1 \strokec4 \
+\cf8 \cb3 \strokec8 inAfterSession\cf4 \strokec4       \cf7 \strokec7 =\cf4 \strokec4  \cf12 \strokec12 f_insession\cf4 \strokec4 (\cf8 \strokec8 afterTime\cf4 \strokec4 )       \cf7 \strokec7 and\cf4 \strokec4  \cf8 \strokec8 showAfter\cf4 \cb1 \strokec4 \
+\cf8 \cb3 \strokec8 inAfterExtend\cf4 \strokec4        \cf7 \strokec7 =\cf4 \strokec4  \cf12 \strokec12 f_insession\cf4 \strokec4 (\cf8 \strokec8 afterExtend\cf4 \strokec4 )     \cf7 \strokec7 and\cf4 \strokec4  \cf8 \strokec8 showAfter\cf4 \cb1 \strokec4 \
+\cf8 \cb3 \strokec8 inOvernightSession\cf4 \strokec4   \cf7 \strokec7 =\cf4 \strokec4  \cf12 \strokec12 f_insession\cf4 \strokec4 (\cf8 \strokec8 overnightTime\cf4 \strokec4 )   \cf7 \strokec7 and\cf4 \strokec4  \cf8 \strokec8 showOvernight\cf4 \cb1 \strokec4 \
+\cf8 \cb3 \strokec8 inOvernightExtend\cf4 \strokec4    \cf7 \strokec7 =\cf4 \strokec4  \cf12 \strokec12 f_insession\cf4 \strokec4 (\cf8 \strokec8 overnightExtend\cf4 \strokec4 ) \cf7 \strokec7 and\cf4 \strokec4  \cf8 \strokec8 showOvernight\cf4 \cb1 \strokec4 \
+\
+\cf8 \cb3 \strokec8 inSession\cf4 \strokec4            \cf7 \strokec7 =\cf4 \strokec4  \cf8 \strokec8 inRegularSession\cf4 \strokec4  \cf7 \strokec7 or\cf4 \strokec4  \cf8 \strokec8 inOvernightSession\cf4 \strokec4  \cf7 \strokec7 or\cf4 \strokec4  \cf8 \strokec8 inAfterSession\cf4 \cb1 \strokec4 \
+\cf8 \cb3 \strokec8 inExtend\cf4 \strokec4             \cf7 \strokec7 =\cf4 \strokec4  \cf8 \strokec8 inRegularExtend\cf4 \strokec4   \cf7 \strokec7 or\cf4 \strokec4  \cf8 \strokec8 inOvernightExtend\cf4 \strokec4   \cf7 \strokec7 or\cf4 \strokec4  \cf8 \strokec8 inAfterExtend\cf4 \cb1 \strokec4 \
+\
+\cf8 \cb3 \strokec8 enterSession\cf4 \strokec4         \cf7 \strokec7 =\cf4 \strokec4  \cf8 \strokec8 inSession\cf4 \strokec4  \cf7 \strokec7 and\cf4 \strokec4  \cf7 \strokec7 not\cf4 \strokec4  \cf8 \strokec8 inSession\cf4 \strokec4 [\cf10 \strokec10 1\cf4 \strokec4 ]\cb1 \
+\cf8 \cb3 \strokec8 enterExtend\cf4 \strokec4          \cf7 \strokec7 =\cf4 \strokec4  \cf8 \strokec8 inExtend\cf4 \strokec4   \cf7 \strokec7 and\cf4 \strokec4  \cf7 \strokec7 not\cf4 \strokec4  \cf8 \strokec8 inExtend\cf4 \strokec4 [\cf10 \strokec10 1\cf4 \strokec4 ]\cb1 \
+\
+\cf8 \cb3 \strokec8 leaveRegularSession\cf4 \strokec4      \cf7 \strokec7 =\cf4 \strokec4  \cf7 \strokec7 not\cf4 \strokec4   \cf8 \strokec8 inRegularSession\cf4 \strokec4   \cf7 \strokec7 and\cf4 \strokec4      \cf8 \strokec8 inRegularSession\cf4 \strokec4 [\cf10 \strokec10 1\cf4 \strokec4 ]\cb1 \
+\cf8 \cb3 \strokec8 enterRegularExtend\cf4 \strokec4       \cf7 \strokec7 =\cf4 \strokec4       \cf8 \strokec8 inRegularExtend\cf4 \strokec4    \cf7 \strokec7 and\cf4 \strokec4  \cf7 \strokec7 not\cf4 \strokec4  \cf8 \strokec8 inRegularExtend\cf4 \strokec4 [\cf10 \strokec10 1\cf4 \strokec4 ]\cb1 \
+\
+\
+\pard\pardeftab720\partightenfactor0
+\cf7 \cb3 \strokec7 if\cf4 \strokec4  \cf9 \strokec9 timeframe.isintraday\cf4 \strokec4  \cf2 \strokec2 //and (PCchart.barIsVisible() or not showAllHistory)\cf4 \cb1 \strokec4 \
+\pard\pardeftab720\partightenfactor0
+\cf4 \cb3     \cf7 \strokec7 if\cf4 \strokec4  \cf8 \strokec8 enterSession\cf4 \cb1 \strokec4 \
+\cb3         \cf8 \strokec8 currentSession\cf4 \strokec4  \cf7 \strokec7 :=\cf4 \strokec4  \cf8 \strokec8 inRegularSession\cf4 \strokec4  \cf7 \strokec7 ?\cf4 \strokec4  \cf8 \strokec8 regularTime\cf4 \strokec4  \cf7 \strokec7 :\cf4 \strokec4  \cf8 \strokec8 inOvernightSession\cf4 \strokec4  \cf7 \strokec7 ?\cf4 \strokec4  \cf8 \strokec8 overnightTime\cf4 \strokec4  \cf7 \strokec7 :\cf4 \strokec4  \cf8 \strokec8 inAfterSession\cf4 \strokec4  \cf7 \strokec7 ?\cf4 \strokec4  \cf8 \strokec8 afterTime\cf4 \strokec4  \cf7 \strokec7 :\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\cb3     \cf7 \strokec7 else\cf4 \strokec4  \cf7 \strokec7 if\cf4 \strokec4  \cf8 \strokec8 enterExtend\cf4 \cb1 \strokec4 \
+\cb3         \cf8 \strokec8 currentSession\cf4 \strokec4  \cf7 \strokec7 :=\cf4 \strokec4  \cf8 \strokec8 inRegularExtend\cf4 \strokec4  \cf7 \strokec7 ?\cf4 \strokec4  \cf8 \strokec8 regularExtend\cf4 \strokec4  \cf7 \strokec7 :\cf4 \strokec4  \cf8 \strokec8 inOvernightExtend\cf4 \strokec4  \cf7 \strokec7 ?\cf4 \strokec4  \cf8 \strokec8 overnightExtend\cf4 \strokec4  \cf7 \strokec7 :\cf4 \strokec4  \cf8 \strokec8 inAfterExtend\cf4 \strokec4  \cf7 \strokec7 ?\cf4 \strokec4  \cf8 \strokec8 afterExtend\cf4 \strokec4  \cf7 \strokec7 :\cf4 \strokec4  \cf9 \strokec9 na\cf4 \cb1 \strokec4 \
+\
+\cb3     \cf7 \strokec7 if\cf4 \strokec4  \cf8 \strokec8 inSession\cf4 \cb1 \strokec4 \
+\cb3  \cb1 \
+\cb3         \cf2 \strokec2 // Initialize levels\cf4 \cb1 \strokec4 \
+\cb3         \cf7 \strokec7 if\cf4 \strokec4  \cf7 \strokec7 not\cf4 \strokec4  \cf8 \strokec8 inSession\cf4 \strokec4 [\cf10 \strokec10 1\cf4 \strokec4 ]\cb1 \
+\cb3             \cf8 \strokec8 startTime\cf4 \strokec4    \cf7 \strokec7 :=\cf4 \strokec4  \cf9 \strokec9 time\cf4 \cb1 \strokec4 \
+\cb3             \cf8 \strokec8 sessionOpen\cf4 \strokec4  \cf7 \strokec7 :=\cf4 \strokec4  \cf8 \strokec8 open_value\cf4 \cb1 \strokec4 \
+\cb3             \cf8 \strokec8 rdrhigh\cf4 \strokec4      \cf7 \strokec7 :=\cf4 \strokec4  \cf8 \strokec8 high_value\cf4 \cb1 \strokec4 \
+\cb3             \cf8 \strokec8 rdrlow\cf4 \strokec4       \cf7 \strokec7 :=\cf4 \strokec4  \cf8 \strokec8 low_value\cf4 \strokec4  \cb1 \
+\cb3             \cf8 \strokec8 ridrlow\cf4 \strokec4      \cf7 \strokec7 :=\cf4 \strokec4  \cf5 \strokec5 math.min\cf4 \strokec4 (\cf8 \strokec8 open_value\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 close_value\cf4 \strokec4 )\cb1 \
+\cb3             \cf8 \strokec8 ridrhigh\cf4 \strokec4     \cf7 \strokec7 :=\cf4 \strokec4  \cf5 \strokec5 math.max\cf4 \strokec4 (\cf8 \strokec8 open_value\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 close_value\cf4 \strokec4 )\cb1 \
+\
+\cb3             \cf2 \strokec2 // Initialize drawing objects\cf4 \cb1 \strokec4 \
+\cb3             \cf7 \strokec7 if\cf4 \strokec4  \cf8 \strokec8 showBackground\cf4 \cb1 \strokec4 \
+\cb3                 \cf8 \strokec8 bgBox\cf4 \strokec4        \cf7 \strokec7 :=\cf4 \strokec4  \cf12 \strokec12 f_newbox\cf4 \strokec4 ()\cb1 \
+\cb3  \cb1 \
+\cb3             \cf7 \strokec7 if\cf4 \strokec4  \cf8 \strokec8 drlines\cf4 \cb1 \strokec4 \
+\cb3                 \cf8 \strokec8 highrdrl\cf4 \strokec4     \cf7 \strokec7 :=\cf4 \strokec4  \cf12 \strokec12 f_newdrline\cf4 \strokec4 ()\cb1 \
+\cb3                 \cf8 \strokec8 lowrdrl\cf4 \strokec4      \cf7 \strokec7 :=\cf4 \strokec4  \cf12 \strokec12 f_newdrline\cf4 \strokec4 ()\cb1 \
+\
+\cb3             \cf7 \strokec7 if\cf4 \strokec4  \cf8 \strokec8 idrlines\cf4 \cb1 \strokec4 \
+\cb3                 \cf8 \strokec8 highridrl\cf4 \strokec4    \cf7 \strokec7 :=\cf4 \strokec4  \cf12 \strokec12 f_newidrline\cf4 \strokec4 ()\cb1 \
+\cb3                 \cf8 \strokec8 lowridrl\cf4 \strokec4     \cf7 \strokec7 :=\cf4 \strokec4  \cf12 \strokec12 f_newidrline\cf4 \strokec4 ()\cb1 \
+\cb3  \cb1 \
+\cb3             \cf7 \strokec7 if\cf4 \strokec4  \cf8 \strokec8 middledrline\cf4 \cb1 \strokec4 \
+\cb3                 \cf8 \strokec8 middlerdrl\cf4 \strokec4   \cf7 \strokec7 :=\cf4 \strokec4  \cf12 \strokec12 f_newmdline\cf4 \strokec4 ()\cb1 \
+\cb3             \cb1 \
+\cb3             \cf7 \strokec7 if\cf4 \strokec4  \cf8 \strokec8 middleidrline\cf4 \cb1 \strokec4 \
+\cb3                 \cf8 \strokec8 middleridrl\cf4 \strokec4  \cf7 \strokec7 :=\cf4 \strokec4  \cf12 \strokec12 f_newmdline\cf4 \strokec4 ()\cb1 \
+\cb3  \cb1 \
+\cb3             \cf7 \strokec7 if\cf4 \strokec4  \cf8 \strokec8 openline\cf4 \cb1 \strokec4 \
+\cb3                 \cf8 \strokec8 drLineOpen\cf4 \strokec4     \cf7 \strokec7 :=\cf4 \strokec4  \cf12 \strokec12 f_newopline\cf4 \strokec4 ()\cb1 \
+\
+\cb3         \cf2 \strokec2 // Calculate levels\cf4 \cb1 \strokec4 \
+\cb3         \cf8 \strokec8 rdrhigh\cf4 \strokec4      \cf7 \strokec7 :=\cf4 \strokec4  \cf5 \strokec5 math.max\cf4 \strokec4 (\cf8 \strokec8 high_value\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 rdrhigh\cf4 \strokec4 )\cb1 \
+\cb3         \cf8 \strokec8 rdrlow\cf4 \strokec4       \cf7 \strokec7 :=\cf4 \strokec4  \cf5 \strokec5 math.min\cf4 \strokec4 (\cf8 \strokec8 low_value\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 rdrlow\cf4 \strokec4 )\cb1 \
+\cb3         \cf8 \strokec8 ridrhigh\cf4 \strokec4     \cf7 \strokec7 :=\cf4 \strokec4  \cf5 \strokec5 math.max\cf4 \strokec4 (\cf8 \strokec8 open_value\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 close_value\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 ridrhigh\cf4 \strokec4 )\cb1 \
+\cb3         \cf8 \strokec8 ridrlow\cf4 \strokec4      \cf7 \strokec7 :=\cf4 \strokec4  \cf5 \strokec5 math.min\cf4 \strokec4 (\cf8 \strokec8 open_value\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 close_value\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 ridrlow\cf4 \strokec4 )\cb1 \
+\cb3         \cf8 \strokec8 rdrmiddle\cf4 \strokec4    \cf7 \strokec7 :=\cf4 \strokec4  \cf5 \strokec5 math.avg\cf4 \strokec4 (\cf8 \strokec8 rdrhigh\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 rdrlow\cf4 \strokec4 )\cb1 \
+\cb3         \cf8 \strokec8 ridrmiddle\cf4 \strokec4   \cf7 \strokec7 :=\cf4 \strokec4  \cf5 \strokec5 math.avg\cf4 \strokec4 (\cf8 \strokec8 ridrhigh\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 ridrlow\cf4 \strokec4 )\cb1 \
+\
+\cb3     \cf7 \strokec7 if\cf4 \strokec4  \cf8 \strokec8 leaveRegularSession\cf4 \cb1 \strokec4 \
+\cb3         \cf8 \strokec8 regidrhigh\cf4 \strokec4  \cf7 \strokec7 :=\cf4 \strokec4  \cf8 \strokec8 ridrhigh\cf4 \cb1 \strokec4 \
+\cb3         \cf8 \strokec8 regidrlow\cf4 \strokec4   \cf7 \strokec7 :=\cf4 \strokec4  \cf8 \strokec8 ridrlow\cf4 \cb1 \strokec4 \
+\cb3         \cf7 \strokec7 if\cf4 \strokec4  \cf8 \strokec8 inRegularExtend\cf4 \cb1 \strokec4 \
+\cb3             \cf8 \strokec8 stdLinesStartTime\cf4 \strokec4  \cf7 \strokec7 :=\cf4 \strokec4  \cf12 \strokec12 f_sessionStartTime\cf4 \strokec4 (\cf8 \strokec8 regularExtend\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 TIMEZONE\cf4 \strokec4 )\cb1 \
+\cb3             \cf8 \strokec8 stdLinesStopTime\cf4 \strokec4  \cf7 \strokec7 :=\cf4 \strokec4   \cf12 \strokec12 f_sessionStopTime\cf4 \strokec4 (\cf8 \strokec8 overnightExtend\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 TIMEZONE\cf4 \strokec4 ) \cf7 \strokec7 +\cf4 \strokec4  \cf8 \strokec8 ONE_DAY\cf4 \strokec4  \cf7 \strokec7 *\cf4 \strokec4  (\cf9 \strokec9 dayofweek\cf4 \strokec4  \cf7 \strokec7 ==\cf4 \strokec4  \cf9 \strokec9 dayofweek.friday\cf4 \strokec4  \cf7 \strokec7 and\cf4 \strokec4  \cf9 \strokec9 syminfo.type\cf4 \strokec4  \cf7 \strokec7 !=\cf4 \strokec4  \cf6 \strokec6 'crypto'\cf4 \strokec4  \cf7 \strokec7 ?\cf4 \strokec4  \cf10 \strokec10 3\cf4 \strokec4  \cf7 \strokec7 :\cf4 \strokec4  \cf10 \strokec10 1\cf4 \strokec4 )\cb1 \
+\
+\cb3     \cf7 \strokec7 if\cf4 \strokec4  \cf8 \strokec8 enterRegularExtend\cf4 \cb1 \strokec4 \
+\cb3         \cf2 \strokec2 // Initialize session high/low.\cf4 \cb1 \strokec4 \
+\cb3         \cf8 \strokec8 sessionHigh\cf4 \strokec4  \cf7 \strokec7 :=\cf4 \strokec4  \cf8 \strokec8 high_value\cf4 \cb1 \strokec4 \
+\cb3         \cf8 \strokec8 sessionLow\cf4 \strokec4   \cf7 \strokec7 :=\cf4 \strokec4  \cf8 \strokec8 low_value\cf4 \cb1 \strokec4 \
+\
+\cb3     \cf2 \strokec2 // Remember high/low since session started. Needed for drawing STD levels. Also keep high low beyond Extend.\cf4 \cb1 \strokec4 \
+\cb3     \cf8 \strokec8 sessionHigh\cf4 \strokec4      \cf7 \strokec7 :=\cf4 \strokec4  \cf5 \strokec5 math.max\cf4 \strokec4 (\cf8 \strokec8 sessionHigh\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 high_value\cf4 \strokec4 )\cb1 \
+\cb3     \cf8 \strokec8 sessionLow\cf4 \strokec4       \cf7 \strokec7 :=\cf4 \strokec4  \cf5 \strokec5 math.min\cf4 \strokec4 (\cf8 \strokec8 sessionLow\cf7 \strokec7 ,\cf4 \strokec4   \cf8 \strokec8 low_value\cf4 \strokec4 )\cb1 \
+\
+\cb3     \cf2 \strokec2 // Draw objects\cf4 \cb1 \strokec4 \
+\cb3     \cf7 \strokec7 if\cf4 \strokec4  \cf8 \strokec8 showBackground\cf4 \strokec4  \cf7 \strokec7 and\cf4 \strokec4  \cf8 \strokec8 inSession\cf4 \cb1 \strokec4 \
+\cb3         \cf8 \strokec8 boxUp\cf4 \strokec4                \cf7 \strokec7 =\cf4 \strokec4  \cf8 \strokec8 close_value\cf4 \strokec4  \cf7 \strokec7 >\cf4 \strokec4  \cf8 \strokec8 sessionOpen\cf4 \cb1 \strokec4 \
+\cb3         \cf8 \strokec8 boxBorderColor\cf4 \strokec4       \cf7 \strokec7 =\cf4 \strokec4  \cf8 \strokec8 useBoxColors\cf4 \strokec4  \cf7 \strokec7 ?\cf4 \strokec4  (\cf8 \strokec8 boxUp\cf4 \strokec4  \cf7 \strokec7 ?\cf4 \strokec4  \cf8 \strokec8 upBorderColor\cf4 \strokec4  \cf7 \strokec7 :\cf4 \strokec4  \cf8 \strokec8 downBorderColor\cf4 \strokec4 ) \cf7 \strokec7 :\cf4 \strokec4  \cf8 \strokec8 backgroundColor\cf4 \cb1 \strokec4 \
+\cb3         \cf8 \strokec8 boxBackgroundColor\cf4 \strokec4   \cf7 \strokec7 =\cf4 \strokec4  \cf8 \strokec8 useBoxColors\cf4 \strokec4  \cf7 \strokec7 ?\cf4 \strokec4  (\cf8 \strokec8 boxUp\cf4 \strokec4  \cf7 \strokec7 ?\cf4 \strokec4  \cf8 \strokec8 upBoxColor\cf4 \strokec4     \cf7 \strokec7 :\cf4 \strokec4  \cf8 \strokec8 downBoxColor\cf4 \strokec4 )    \cf7 \strokec7 :\cf4 \strokec4  \cf8 \strokec8 backgroundColor\cf4 \cb1 \strokec4 \
+\cb3         \cf8 \strokec8 boxHigh\cf4 \strokec4              \cf7 \strokec7 =\cf4 \strokec4  \cf8 \strokec8 boxType\cf7 \strokec7 ==\cf8 \strokec8 BX0\cf4 \strokec4  \cf7 \strokec7 ?\cf4 \strokec4  \cf8 \strokec8 rdrhigh\cf4 \strokec4  \cf7 \strokec7 :\cf4 \strokec4  \cf8 \strokec8 ridrhigh\cf4 \cb1 \strokec4 \
+\cb3         \cf8 \strokec8 boxLow\cf4 \strokec4               \cf7 \strokec7 =\cf4 \strokec4  \cf8 \strokec8 boxType\cf7 \strokec7 ==\cf8 \strokec8 BX0\cf4 \strokec4  \cf7 \strokec7 ?\cf4 \strokec4  \cf8 \strokec8 rdrlow\cf4 \strokec4   \cf7 \strokec7 :\cf4 \strokec4  \cf8 \strokec8 ridrlow\cf4 \cb1 \strokec4 \
+\cb3         \cf12 \strokec12 f_movebox\cf4 \strokec4 (\cf8 \strokec8 bgBox\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 startTime\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 boxHigh\cf7 \strokec7 ,\cf4 \strokec4  \cf9 \strokec9 time\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 boxLow\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 boxBorderColor\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 boxBackgroundColor\cf4 \strokec4 )\cb1 \
+\cb3  \cb1 \
+\cb3     \cf7 \strokec7 if\cf4 \strokec4  \cf8 \strokec8 extendToEndOfRDR\cf4 \cb1 \strokec4 \
+\cb3         \cf7 \strokec7 if\cf4 \strokec4  \cf9 \strokec9 syminfo.type\cf4 \strokec4  \cf7 \strokec7 ==\cf4 \strokec4  \cf6 \strokec6 'warrant'\cf4 \strokec4  \cf7 \strokec7 or\cf4 \strokec4  \cf9 \strokec9 syminfo.type\cf4 \strokec4  \cf7 \strokec7 ==\cf4 \strokec4  \cf6 \strokec6 'structured'\cf4 \strokec4  \cf7 \strokec7 or\cf4 \strokec4  \cf9 \strokec9 syminfo.type\cf4 \strokec4  \cf7 \strokec7 ==\cf4 \strokec4  \cf6 \strokec6 'right'\cf4 \cb1 \strokec4 \
+\cb3             \cf8 \strokec8 endTime\cf4 \strokec4  \cf7 \strokec7 :=\cf4 \strokec4  \cf9 \strokec9 time\cf4 \cb1 \strokec4 \
+\cb3         \cf7 \strokec7 else\cf4 \strokec4  \cf7 \strokec7 if\cf4 \strokec4  \cf9 \strokec9 time\cf4 \strokec4  \cf7 \strokec7 >\cf4 \strokec4  (\cf9 \strokec9 timenow\cf4 \strokec4  \cf7 \strokec7 -\cf4 \strokec4  \cf10 \strokec10 2\cf4 \strokec4  \cf7 \strokec7 *\cf4 \strokec4  \cf8 \strokec8 ONE_DAY\cf4 \strokec4 ) \cf2 \strokec2 // no need to call functions every bar. Only start checking 2 days ago.\cf4 \cb1 \strokec4 \
+\cb3             \cf7 \strokec7 if\cf4 \strokec4  \cf12 \strokec12 f_timestamp_to_date\cf4 \strokec4 (\cf12 \strokec12 f_sessionStopTime\cf4 \strokec4 (\cf8 \strokec8 currentSession\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 TIMEZONE\cf4 \strokec4 )\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 TIMEZONE\cf4 \strokec4 ) \cf7 \strokec7 ==\cf4 \strokec4  \cf12 \strokec12 f_timestamp_to_date\cf4 \strokec4 (\cf9 \strokec9 timenow\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 TIMEZONE\cf4 \strokec4 )  \cf2 \strokec2 //timenow_date\cf4 \cb1 \strokec4 \
+\cb3                 \cf8 \strokec8 endTime\cf4 \strokec4  \cf7 \strokec7 :=\cf4 \strokec4  \cf12 \strokec12 f_sessionStopTime\cf4 \strokec4 (\cf8 \strokec8 regularExtend\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 TIMEZONE\cf4 \strokec4 )\cb1 \
+\cb3             \cf7 \strokec7 else\cf4 \cb1 \strokec4 \
+\cb3                 \cf8 \strokec8 endTime\cf4 \strokec4  \cf7 \strokec7 :=\cf4 \strokec4  \cf9 \strokec9 time\cf4 \cb1 \strokec4 \
+\cb3         \cf7 \strokec7 else\cf4 \cb1 \strokec4 \
+\cb3             \cf8 \strokec8 endTime\cf4 \strokec4  \cf7 \strokec7 :=\cf4 \strokec4  \cf9 \strokec9 time\cf4 \cb1 \strokec4 \
+\cb3     \cf7 \strokec7 else\cf4 \cb1 \strokec4 \
+\cb3         \cf8 \strokec8 endTime\cf4 \strokec4  \cf7 \strokec7 :=\cf4 \strokec4  \cf9 \strokec9 time\cf4 \cb1 \strokec4 \
+\
+\cb3     \cf7 \strokec7 if\cf4 \strokec4  \cf8 \strokec8 drlines\cf4 \strokec4  \cf7 \strokec7 and\cf4 \strokec4  (\cf8 \strokec8 inSession\cf4 \strokec4  \cf7 \strokec7 or\cf4 \strokec4  (\cf8 \strokec8 extenddrLines\cf4 \strokec4  \cf7 \strokec7 and\cf4 \strokec4  \cf8 \strokec8 inExtend\cf4 \strokec4 ))\cb1 \
+\cb3         \cf12 \strokec12 f_moveLine\cf4 \strokec4 (\cf8 \strokec8 highrdrl\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 startTime\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 rdrhigh\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 endTime\cf4 \strokec4 )\cb1 \
+\cb3         \cf12 \strokec12 f_moveLine\cf4 \strokec4 (\cf8 \strokec8 lowrdrl\cf7 \strokec7 ,\cf4 \strokec4   \cf8 \strokec8 startTime\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 rdrlow\cf7 \strokec7 ,\cf4 \strokec4   \cf8 \strokec8 endTime\cf4 \strokec4 )\cb1 \
+\cb3         \cf7 \strokec7 if\cf4 \strokec4  \cf8 \strokec8 middledrline\cf4 \cb1 \strokec4 \
+\cb3             \cf12 \strokec12 f_moveLine\cf4 \strokec4 (\cf8 \strokec8 middlerdrl\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 startTime\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 rdrmiddle\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 endTime\cf4 \strokec4 )\cb1 \
+\cb3     \cb1 \
+\cb3     \cf7 \strokec7 if\cf4 \strokec4  \cf8 \strokec8 idrlines\cf4 \strokec4  \cf7 \strokec7 and\cf4 \strokec4  (\cf8 \strokec8 inSession\cf4 \strokec4  \cf7 \strokec7 or\cf4 \strokec4  (\cf8 \strokec8 extendidrLines\cf4 \strokec4  \cf7 \strokec7 and\cf4 \strokec4  \cf8 \strokec8 inExtend\cf4 \strokec4 ))\cb1 \
+\cb3         \cf12 \strokec12 f_moveLine\cf4 \strokec4 (\cf8 \strokec8 highridrl\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 startTime\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 ridrhigh\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 endTime\cf4 \strokec4 )\cb1 \
+\cb3         \cf12 \strokec12 f_moveLine\cf4 \strokec4 (\cf8 \strokec8 lowridrl\cf7 \strokec7 ,\cf4 \strokec4   \cf8 \strokec8 startTime\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 ridrlow\cf7 \strokec7 ,\cf4 \strokec4   \cf8 \strokec8 endTime\cf4 \strokec4 )\cb1 \
+\cb3         \cf7 \strokec7 if\cf4 \strokec4  \cf8 \strokec8 middleidrline\cf4 \cb1 \strokec4 \
+\cb3             \cf12 \strokec12 f_moveLine\cf4 \strokec4 (\cf8 \strokec8 middleridrl\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 startTime\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 ridrmiddle\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 endTime\cf4 \strokec4 )\cb1 \
+\
+\cb3     \cf7 \strokec7 if\cf4 \strokec4  \cf8 \strokec8 openline\cf4 \strokec4  \cf7 \strokec7 and\cf4 \strokec4  (\cf8 \strokec8 inSession\cf4 \strokec4  \cf7 \strokec7 or\cf4 \strokec4  (\cf8 \strokec8 extendopLines\cf4 \strokec4  \cf7 \strokec7 and\cf4 \strokec4  \cf8 \strokec8 inExtend\cf4 \strokec4 ))\cb1 \
+\cb3         \cf12 \strokec12 f_moveLine\cf4 \strokec4 (\cf8 \strokec8 drLineOpen\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 startTime\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 sessionOpen\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 endTime\cf4 \strokec4 )\cb1 \
+\
+\cb3     \cf7 \strokec7 if\cf4 \strokec4  \cf8 \strokec8 showStdLines\cf4 \cb1 \strokec4 \
+\cb3         \cf12 \strokec12 f_drawStdLines\cf4 \strokec4 (\cf8 \strokec8 stdLinesStartTime\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 stdLinesStopTime\cf7 \strokec7 ,\cf4 \strokec4  \cf8 \strokec8 enterRegularExtend\cf4 \strokec4 ) \cb1 \
+\
+}

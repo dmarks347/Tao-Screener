@@ -1,0 +1,272 @@
+//@version=5
+indicator("Support/Resistance Levels", shorttitle="S/R Levels", overlay=true, max_lines_count=500)
+
+// =============================================================================
+// INPUTS
+// =============================================================================
+
+n = input.int(60, "S/R Look Back Period", minval=1, step=1, group="S/R Parameters")
+x = input.int(2, "Candles Required To Create S/R", minval=2, step=1, group="S/R Parameters")
+y = input.float(0.005, "Sensitivity (%)", minval=0.005, maxval=0.1, step=0.005, group="S/R Parameters")
+z = input.int(0, "Candles Allowed Between", minval=0, step=1, group="S/R Parameters")
+max_levels = input.int(10, "Maximum Levels to Track", minval=1, maxval=20, step=1, group="Display")
+
+// Validate n >= z + 3
+if n < z + 3
+    runtime.error("S/R Look Back Period must be at least " + str.tostring(z + 3))
+
+// =============================================================================
+// VARIABLES AND ARRAYS
+// =============================================================================
+
+var line[] support_lines = array.new<line>()
+var line[] resistance_lines = array.new<line>()
+var float[] support_levels = array.new<float>()
+var float[] resistance_levels = array.new<float>()
+
+// =============================================================================
+// FUNCTIONS
+// =============================================================================
+
+// Calculate body base (bottom of candle body)
+get_body_base(index) =>
+    math.min(open[index], close[index])
+
+// Calculate body top (top of candle body)
+get_body_top(index) =>
+    math.max(open[index], close[index])
+
+// Check if two levels are within sensitivity percentage
+levels_within_sensitivity(level1, level2, sensitivity) =>
+    math.abs((level2 - level1) / level1) * 100 <= sensitivity / 100
+
+// Validate support level - no candles close below the level
+validate_support_level(level, lookback_bars) =>
+    valid = true
+    for i = 0 to lookback_bars - 1
+        if close[i] < level
+            valid := false
+            break
+    valid
+
+// Validate resistance level - no candles close above the level  
+validate_resistance_level(level, lookback_bars) =>
+    valid = true
+    for i = 0 to lookback_bars - 1
+        if close[i] > level
+            valid := false
+            break
+    valid
+
+// Check if candles between two qualifying candles violate the level
+validate_candles_between_support(start_idx, end_idx, min_level) =>
+    valid = true
+    if start_idx > end_idx
+        for i = end_idx + 1 to start_idx - 1
+            if open[i] < min_level or close[i] < min_level
+                valid := false
+                break
+    valid
+
+validate_candles_between_resistance(start_idx, end_idx, max_level) =>
+    valid = true
+    if start_idx > end_idx
+        for i = end_idx + 1 to start_idx - 1
+            if open[i] > max_level or close[i] > max_level
+                valid := false
+                break
+    valid
+
+// Check if level already exists in array
+level_exists(levels_array, new_level, tolerance = 0.1) =>
+    exists = false
+    if array.size(levels_array) > 0
+        for i = 0 to array.size(levels_array) - 1
+            existing_level = array.get(levels_array, i)
+            if math.abs(new_level - existing_level) / existing_level * 100 < tolerance
+                exists := true
+                break
+    exists
+
+// Find support levels
+find_support_levels() =>
+    found_levels = array.new<float>()
+    found_bar_indices = array.new<int>()
+    
+    // Find all potential qualifying pairs first
+    pair_i_indices = array.new<int>()
+    pair_j_indices = array.new<int>()
+    pair_levels = array.new<float>()
+    
+    // Scan through lookback period for all combinations
+    for i = 0 to n - 2
+        body_base_1 = get_body_base(i)
+        
+        // Look for qualifying candles within z+1 distance
+        for j = i + 1 to math.min(i + z + 1, n - 1)
+            body_base_2 = get_body_base(j)
+            
+            // Check if body bases are within sensitivity
+            if levels_within_sensitivity(body_base_1, body_base_2, y)
+                min_level = math.min(body_base_1, body_base_2)
+                
+                // Validate no closes below in lookback period
+                if validate_support_level(min_level, n)
+                    // Validate candles between don't violate level
+                    if validate_candles_between_support(i, j, min_level)
+                        // Store the qualifying pair
+                        array.push(pair_i_indices, i)
+                        array.push(pair_j_indices, j)
+                        array.push(pair_levels, min_level)
+    
+    // Process qualifying pairs and remove duplicates
+    for k = 0 to array.size(pair_levels) - 1
+        if array.size(found_levels) >= max_levels
+            break
+            
+        level = array.get(pair_levels, k)
+        j_index = array.get(pair_j_indices, k)
+        
+        // Check if this level already exists
+        if not level_exists(found_levels, level, 0.2)
+            array.push(found_levels, level)
+            // Store bar index of the first (older) qualifying candle
+            array.push(found_bar_indices, bar_index - j_index)
+    
+    [found_levels, found_bar_indices]
+
+// Find resistance levels  
+find_resistance_levels() =>
+    found_levels = array.new<float>()
+    found_bar_indices = array.new<int>()
+    
+    // Find all potential qualifying pairs first
+    pair_i_indices = array.new<int>()
+    pair_j_indices = array.new<int>()
+    pair_levels = array.new<float>()
+    
+    // Scan through lookback period for all combinations
+    for i = 0 to n - 2
+        body_top_1 = get_body_top(i)
+        
+        // Look for qualifying candles within z+1 distance
+        for j = i + 1 to math.min(i + z + 1, n - 1)
+            body_top_2 = get_body_top(j)
+            
+            // Check if body tops are within sensitivity
+            if levels_within_sensitivity(body_top_1, body_top_2, y)
+                max_level = math.max(body_top_1, body_top_2)
+                
+                // Validate no closes above in lookback period
+                if validate_resistance_level(max_level, n)
+                    // Validate candles between don't violate level
+                    if validate_candles_between_resistance(i, j, max_level)
+                        // Store the qualifying pair
+                        array.push(pair_i_indices, i)
+                        array.push(pair_j_indices, j)
+                        array.push(pair_levels, max_level)
+    
+    // Process qualifying pairs and remove duplicates
+    for k = 0 to array.size(pair_levels) - 1
+        if array.size(found_levels) >= max_levels
+            break
+            
+        level = array.get(pair_levels, k)
+        j_index = array.get(pair_j_indices, k)
+        
+        // Check if this level already exists
+        if not level_exists(found_levels, level, 0.2)
+            array.push(found_levels, level)
+            // Store bar index of the first (older) qualifying candle
+            array.push(found_bar_indices, bar_index - j_index)
+    
+    [found_levels, found_bar_indices]
+
+// Clear existing lines
+clear_lines(lines_array) =>
+    if array.size(lines_array) > 0
+        for i = 0 to array.size(lines_array) - 1
+            line.delete(array.get(lines_array, i))
+    array.clear(lines_array)
+
+// Draw support and resistance lines
+draw_levels() =>
+    // Clear existing lines
+    clear_lines(support_lines)
+    clear_lines(resistance_lines)
+    array.clear(support_levels)
+    array.clear(resistance_levels)
+    
+    // Find new levels
+    [current_support_levels, support_bar_indices] = find_support_levels()
+    [current_resistance_levels, resistance_bar_indices] = find_resistance_levels()
+    
+    // Draw support lines (white)
+    if array.size(current_support_levels) > 0
+        for i = 0 to array.size(current_support_levels) - 1
+            level = array.get(current_support_levels, i)
+            start_bar = array.get(support_bar_indices, i)
+            support_line = line.new(
+                x1=start_bar, 
+                y1=level, 
+                x2=start_bar + 50, 
+                y2=level, 
+                color=color.white, 
+                width=2,
+                style=line.style_solid,
+                extend=extend.right
+            )
+            array.push(support_lines, support_line)
+            array.push(support_levels, level)
+    
+    // Draw resistance lines (yellow)
+    if array.size(current_resistance_levels) > 0
+        for i = 0 to array.size(current_resistance_levels) - 1
+            level = array.get(current_resistance_levels, i)
+            start_bar = array.get(resistance_bar_indices, i)
+            resistance_line = line.new(
+                x1=start_bar, 
+                y1=level, 
+                x2=start_bar + 50, 
+                y2=level, 
+                color=color.yellow, 
+                width=2,
+                style=line.style_solid,
+                extend=extend.right
+            )
+            array.push(resistance_lines, resistance_line)
+            array.push(resistance_levels, level)
+
+// =============================================================================
+// MAIN EXECUTION
+// =============================================================================
+
+// Only process on confirmed bars to avoid repainting
+if barstate.isconfirmed
+    draw_levels()
+
+// =============================================================================
+// PLOTTING AND LABELS
+// =============================================================================
+
+// Plot background for current candle body
+plot_body_base = get_body_base(0)
+plot_body_top = get_body_top(0)
+
+// Optional: Plot body base and top for debugging
+// plot(plot_body_base, color=color.new(color.blue, 80), linewidth=1, title="Body Base")
+// plot(plot_body_top, color=color.new(color.red, 80), linewidth=1, title="Body Top")
+
+// Add table to show current levels count
+if barstate.islast
+    var table info_table = table.new(position.top_right, 2, 3, bgcolor=color.white, border_width=1)
+    
+    support_count = array.size(support_levels)
+    resistance_count = array.size(resistance_levels)
+    
+    table.cell(info_table, 0, 0, "Support Levels:", text_color=color.black, text_size=size.small)
+    table.cell(info_table, 1, 0, str.tostring(support_count), text_color=color.black, text_size=size.small)
+    table.cell(info_table, 0, 1, "Resistance Levels:", text_color=color.black, text_size=size.small)  
+    table.cell(info_table, 1, 1, str.tostring(resistance_count), text_color=color.black, text_size=size.small)
+    table.cell(info_table, 0, 2, "Sensitivity:", text_color=color.black, text_size=size.small)
+    table.cell(info_table, 1, 2, str.tostring(y) + "%", text_color=color.black, text_size=size.small) 

@@ -1,0 +1,312 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2822
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 //@version=5\
+indicator("Robo Quant Session Liquidity", overlay=true)\
+\
+// Session inputs\
+asiaSession = input.session("2000-0000", "Asia Session Time", group="Session Settings")\
+londonSession = input.session("0200-0500", "London Session Time", group="Session Settings")\
+nySession = input.session("0930-1600", "NY Session Time", group="Session Settings")\
+\
+// Visual settings\
+asiaBoxColor = input.color(color.new(color.blue, 80), "Asia Box Color", group="Visual Settings")\
+londonBoxColor = input.color(color.new(color.purple, 80), "London Box Color", group="Visual Settings")\
+nyBoxColor = input.color(color.new(color.green, 80), "NY Box Color", group="Visual Settings")\
+drawOnlyLatestBox = input.bool(false, "Draw Only Latest Box", group="Visual Settings", tooltip="When enabled, only the most recent session box will be displayed")\
+boxLineWidth = input.int(1, "Box Border Width", minval=1, maxval=4, group="Visual Settings")\
+\
+// Sweep detection settings\
+labelHighColor = input.color(color.new(color.red, 0), "High Sweep Label Color", group="Sweep Settings")\
+labelLowColor = input.color(color.new(color.green, 0), "Low Sweep Label Color", group="Sweep Settings")\
+lineHighColor = input.color(color.red, "High Sweep Line Color", group="Sweep Settings")\
+lineLowColor = input.color(color.green, "Low Sweep Line Color", group="Sweep Settings")\
+lineWidth = input.int(1, "Sweep Line Width", minval=1, maxval=3, group="Sweep Settings")\
+labelSize = input.string("large", "Label Size", options=["auto", "tiny", "small", "normal", "large", "huge"], group="Sweep Settings")\
+\
+// Convert string to size enum\
+labelSizeEnum = switch labelSize\
+    "auto" => size.auto\
+    "tiny" => size.tiny\
+    "small" => size.small\
+    "normal" => size.normal\
+    "large" => size.large\
+    "huge" => size.huge\
+    => size.normal // Default fallback\
+\
+// Pattern detection settings\
+patternLongColor = input.color(color.new(color.green, 0), "Long A++ Pattern Color", group="Pattern Settings")\
+patternShortColor = input.color(color.new(color.red, 0), "Short A++ Pattern Color", group="Pattern Settings")\
+\
+// Asia session tracking variables\
+var float asiaHigh = na\
+var float asiaLow = na\
+var int asiaStartBar = na\
+var int asiaEndBar = na\
+var box[] asiaBoxes = array.new_box()\
+\
+// London session tracking variables\
+var float londonHigh = na\
+var float londonLow = na\
+var int londonStartBar = na\
+var int londonEndBar = na\
+var box[] londonBoxes = array.new_box()\
+\
+// NY session tracking variables\
+var float nyHigh = na\
+var float nyLow = na\
+var int nyStartBar = na\
+var int nyEndBar = na\
+var box[] nyBoxes = array.new_box()\
+\
+// Sweep tracking variables\
+var float completedAsiaHigh = na\
+var float completedAsiaLow = na\
+var float completedLondonHigh = na\
+var float completedLondonLow = na\
+var int completedAsiaEndBar = na\
+var int completedLondonEndBar = na\
+var bool asiaHighSwept = false\
+var bool asiaLowSwept = false\
+var bool londonHighSwept = false\
+var bool londonLowSwept = false\
+var line[] sweepLines = array.new_line()\
+var label[] sweepLabels = array.new_label()\
+\
+// Pattern detection variables\
+var bool longPatternDetected = false\
+var bool shortPatternDetected = false\
+\
+// Check if we're in the sessions\
+inAsiaSession = not na(time(timeframe.period, asiaSession))\
+inLondonSession = not na(time(timeframe.period, londonSession))\
+inNYSession = not na(time(timeframe.period, nySession))\
+\
+// Reset sweep detection at start of day\
+if timeframe.change("D")\
+    completedAsiaHigh := na\
+    completedAsiaLow := na\
+    completedLondonHigh := na\
+    completedLondonLow := na\
+    completedAsiaEndBar := na\
+    completedLondonEndBar := na\
+    asiaHighSwept := false\
+    asiaLowSwept := false\
+    londonHighSwept := false\
+    londonLowSwept := false\
+    longPatternDetected := false\
+    shortPatternDetected := false\
+\
+// === Asia Session Logic ===\
+if inAsiaSession\
+    // First bar of the session\
+    if na(asiaStartBar) or timeframe.change("D")\
+        asiaStartBar := bar_index\
+        asiaHigh := high\
+        asiaLow := low\
+        \
+    // Update high and low during the session\
+    asiaHigh := math.max(asiaHigh, high)\
+    asiaLow := math.min(asiaLow, low)\
+    \
+    // Track end bar continuously\
+    asiaEndBar := bar_index\
+\
+// Draw Asia box when the session ends\
+if not inAsiaSession and not na(asiaStartBar) and not na(asiaEndBar) and not na(asiaHigh) and not na(asiaLow) and bar_index > asiaEndBar\
+    // Create new box for the completed session - strictly within the session bounds\
+    sessionBox = box.new(asiaStartBar, asiaHigh, asiaEndBar, asiaLow, \
+                         border_color=asiaBoxColor, \
+                         border_width=boxLineWidth, \
+                         bgcolor=asiaBoxColor)\
+                         \
+    array.push(asiaBoxes, sessionBox)\
+    \
+    // If we only want the latest box, remove old ones\
+    if drawOnlyLatestBox and array.size(asiaBoxes) > 1\
+        box.delete(array.get(asiaBoxes, 0))\
+        array.remove(asiaBoxes, 0)\
+    \
+    // Store completed session values for sweep detection\
+    completedAsiaHigh := asiaHigh\
+    completedAsiaLow := asiaLow\
+    completedAsiaEndBar := asiaEndBar\
+    \
+    // Reset tracking variables for next session\
+    asiaStartBar := na\
+    asiaEndBar := na\
+    asiaHigh := na\
+    asiaLow := na\
+\
+// === London Session Logic ===\
+if inLondonSession\
+    // First bar of the session\
+    if na(londonStartBar) or timeframe.change("D")\
+        londonStartBar := bar_index\
+        londonHigh := high\
+        londonLow := low\
+        \
+    // Update high and low during the session\
+    londonHigh := math.max(londonHigh, high)\
+    londonLow := math.min(londonLow, low)\
+    \
+    // Track end bar continuously\
+    londonEndBar := bar_index\
+\
+// Draw London box when the session ends\
+if not inLondonSession and not na(londonStartBar) and not na(londonEndBar) and not na(londonHigh) and not na(londonLow) and bar_index > londonEndBar\
+    // Create new box for the completed session - strictly within the session bounds\
+    sessionBox = box.new(londonStartBar, londonHigh, londonEndBar, londonLow, \
+                         border_color=londonBoxColor, \
+                         border_width=boxLineWidth, \
+                         bgcolor=londonBoxColor)\
+                         \
+    array.push(londonBoxes, sessionBox)\
+    \
+    // If we only want the latest box, remove old ones\
+    if drawOnlyLatestBox and array.size(londonBoxes) > 1\
+        box.delete(array.get(londonBoxes, 0))\
+        array.remove(londonBoxes, 0)\
+    \
+    // Store completed session values for sweep detection\
+    completedLondonHigh := londonHigh\
+    completedLondonLow := londonLow\
+    completedLondonEndBar := londonEndBar\
+    \
+    // Reset tracking variables for next session\
+    londonStartBar := na\
+    londonEndBar := na\
+    londonHigh := na\
+    londonLow := na\
+\
+// === NY Session Logic ===\
+if inNYSession\
+    // First bar of the session\
+    if na(nyStartBar) or timeframe.change("D")\
+        nyStartBar := bar_index\
+        nyHigh := high\
+        nyLow := low\
+        \
+    // Update high and low during the session\
+    nyHigh := math.max(nyHigh, high)\
+    nyLow := math.min(nyLow, low)\
+    \
+    // Track end bar continuously\
+    nyEndBar := bar_index\
+\
+// Draw NY box when the session ends\
+if not inNYSession and not na(nyStartBar) and not na(nyEndBar) and not na(nyHigh) and not na(nyLow) and bar_index > nyEndBar\
+    // Create new box for the completed session - strictly within the session bounds\
+    sessionBox = box.new(nyStartBar, nyHigh, nyEndBar, nyLow, \
+                         border_color=nyBoxColor, \
+                         border_width=boxLineWidth, \
+                         bgcolor=nyBoxColor)\
+                         \
+    array.push(nyBoxes, sessionBox)\
+    \
+    // If we only want the latest box, remove old ones\
+    if drawOnlyLatestBox and array.size(nyBoxes) > 1\
+        box.delete(array.get(nyBoxes, 0))\
+        array.remove(nyBoxes, 0)\
+    \
+    // Reset tracking variables for next session\
+    nyStartBar := na\
+    nyEndBar := na\
+    nyHigh := na\
+    nyLow := na\
+\
+// ====== Sweep Detection Logic ======\
+// Only detect sweeps if the day hasn't changed since the session completed\
+sameDay = not timeframe.change("D")\
+\
+// Asia High Swept\
+if not asiaHighSwept and not na(completedAsiaHigh) and high > completedAsiaHigh and sameDay\
+    sweepLabel = label.new(bar_index, high, "AHS", color=labelHighColor, style=label.style_label_down, textcolor=color.white, size=labelSizeEnum)\
+    array.push(sweepLabels, sweepLabel)\
+    \
+    sweepLine = line.new(completedAsiaEndBar, completedAsiaHigh, bar_index, completedAsiaHigh, color=lineHighColor, width=lineWidth)\
+    array.push(sweepLines, sweepLine)\
+    \
+    asiaHighSwept := true\
+\
+// Asia Low Swept\
+if not asiaLowSwept and not na(completedAsiaLow) and low < completedAsiaLow and sameDay\
+    sweepLabel = label.new(bar_index, low, "ALS", color=labelLowColor, style=label.style_label_up, textcolor=color.white, size=labelSizeEnum)\
+    array.push(sweepLabels, sweepLabel)\
+    \
+    sweepLine = line.new(completedAsiaEndBar, completedAsiaLow, bar_index, completedAsiaLow, color=lineLowColor, width=lineWidth)\
+    array.push(sweepLines, sweepLine)\
+    \
+    asiaLowSwept := true\
+\
+// London High Swept\
+if not londonHighSwept and not na(completedLondonHigh) and high > completedLondonHigh and sameDay\
+    sweepLabel = label.new(bar_index, high, "LHS", color=labelHighColor, style=label.style_label_down, textcolor=color.white, size=labelSizeEnum)\
+    array.push(sweepLabels, sweepLabel)\
+    \
+    sweepLine = line.new(completedLondonEndBar, completedLondonHigh, bar_index, completedLondonHigh, color=lineHighColor, width=lineWidth)\
+    array.push(sweepLines, sweepLine)\
+    \
+    londonHighSwept := true\
+\
+// London Low Swept\
+if not londonLowSwept and not na(completedLondonLow) and low < completedLondonLow and sameDay\
+    sweepLabel = label.new(bar_index, low, "LLS", color=labelLowColor, style=label.style_label_up, textcolor=color.white, size=labelSizeEnum)\
+    array.push(sweepLabels, sweepLabel)\
+    \
+    sweepLine = line.new(completedLondonEndBar, completedLondonLow, bar_index, completedLondonLow, color=lineLowColor, width=lineWidth)\
+    array.push(sweepLines, sweepLine)\
+    \
+    londonLowSwept := true\
+\
+// ====== Pattern Detection Logic ======\
+// Check for patterns as soon as both Asia and London sessions are complete \
+// and the conditions are met (not just at NY session start)\
+if not na(completedAsiaHigh) and not na(completedAsiaLow) and not na(completedLondonHigh) and not na(completedLondonLow) and sameDay\
+    // Long A++ Pattern: Both lows swept (AL & LL = true) and both highs not swept (AH & LH = false)\
+    if asiaLowSwept and londonLowSwept and not asiaHighSwept and not londonHighSwept and not longPatternDetected\
+        longLabel = label.new(bar_index, high + (high * 0.001), "Long A++", color=patternLongColor, style=label.style_label_down, textcolor=color.white, size=labelSizeEnum)\
+        array.push(sweepLabels, longLabel)\
+        longPatternDetected := true\
+        \
+    // Short A++ Pattern: Both highs swept (AH & LH = true) and both lows not swept (AL & LL = false)\
+    if asiaHighSwept and londonHighSwept and not asiaLowSwept and not londonLowSwept and not shortPatternDetected\
+        shortLabel = label.new(bar_index, low - (low * 0.001), "Short A++", color=patternShortColor, style=label.style_label_up, textcolor=color.white, size=labelSizeEnum)\
+        array.push(sweepLabels, shortLabel)\
+        shortPatternDetected := true\
+\
+// Clean up boxes, lines, and labels on chart reload to avoid duplication\
+if barstate.isfirst\
+    // Delete all existing Asia boxes\
+    if array.size(asiaBoxes) > 0\
+        for i = 0 to array.size(asiaBoxes) - 1\
+            box.delete(array.get(asiaBoxes, i))\
+    array.clear(asiaBoxes)\
+    \
+    // Delete all existing London boxes\
+    if array.size(londonBoxes) > 0\
+        for i = 0 to array.size(londonBoxes) - 1\
+            box.delete(array.get(londonBoxes, i))\
+    array.clear(londonBoxes)\
+    \
+    // Delete all existing NY boxes\
+    if array.size(nyBoxes) > 0\
+        for i = 0 to array.size(nyBoxes) - 1\
+            box.delete(array.get(nyBoxes, i))\
+    array.clear(nyBoxes)\
+    \
+    // Delete all existing sweep lines\
+    if array.size(sweepLines) > 0\
+        for i = 0 to array.size(sweepLines) - 1\
+            line.delete(array.get(sweepLines, i))\
+    array.clear(sweepLines)\
+    \
+    // Delete all existing sweep labels\
+    if array.size(sweepLabels) > 0\
+        for i = 0 to array.size(sweepLabels) - 1\
+            label.delete(array.get(sweepLabels, i))\
+    array.clear(sweepLabels) }

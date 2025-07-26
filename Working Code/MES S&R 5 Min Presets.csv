@@ -1,0 +1,31 @@
+Name,Value
+__indicatorName,null
+S/R Detection Start Time (ET),7:00
+S/R Detection End Time (ET),12:30
+Long Trading Start Time (ET),8:30
+Long Trading End Time (ET),15:45
+Short Trading Start Time (ET),7:15
+Short Trading End Time (ET),12:30
+S/R Look Back Period,60
+Candles Required To Create S/R,2
+Sensitivity (%),0.08
+Candles Allowed Between,0
+Maximum Levels to Track,1
+Trade Direction,Both
+Support,
+Minimum Separation Candles,0
+Maximum Separation Candles,50
+Entry Window Candles,2
+Max Simultaneous Long Trades,1
+Prevent Re-entry Bars,2
+Long Take Profit Multiple,2.3
+Min Candle Body %,30
+,
+Resistance ,
+Minimum Separation Candles,1
+Maximum Separation Candles,50
+Entry Window Candles,2
+Max Simultaneous Long Trades,1
+Prevent Re-entry Bars,1
+Long Take Profit Multiple,3.5
+Min Candle Body %,23

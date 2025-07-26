@@ -1,0 +1,223 @@
+//@version=6
+strategy("VWAP Reversion Strategy", overlay=true, 
+         default_qty_type=strategy.fixed, 
+         default_qty_value=1,
+         currency=currency.USD)
+
+// =============================================================================
+// INPUTS
+// =============================================================================
+
+// Trade Settings
+entry_hour = input.int(10, "Entry Hour (ET)", minval=6, maxval=14, step=1,
+                       tooltip="Hour to enter trade (6-14, Eastern Time)", 
+                       group="Trade Settings")
+
+entry_minute = input.int(0, "Entry Minute", 
+                         options=[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55],
+                         tooltip="Minute within the hour (5-minute intervals)", 
+                         group="Trade Settings")
+
+min_vwap_distance_ticks = input.int(15, "Minimum VWAP Distance (Ticks)", 
+                                    minval=1, maxval=100, step=1,
+                                    tooltip="Minimum distance from VWAP required to enter trade", 
+                                    group="Trade Settings")
+
+max_trades_per_day = input.int(1, "Maximum Trades Per Day", 
+                               minval=1, maxval=10, step=1,
+                               tooltip="Maximum number of trades allowed per day", 
+                               group="Trade Settings")
+
+trade_quantity = input.int(1, "Trade Quantity (Fixed)", 
+                           minval=1, maxval=1000, step=1,
+                           tooltip="Fixed quantity for each trade", 
+                           group="Trade Settings")
+
+sl_buffer_ticks = input.int(0, "Stop Loss Buffer (Ticks)", 
+                            minval=0, maxval=50, step=1,
+                            tooltip="Additional ticks to add to calculated stop loss for extra protection", 
+                            group="Trade Settings")
+
+// Visual Settings
+show_vwap = input.bool(true, "Show VWAP Line", group="Visual")
+show_entry_signals = input.bool(true, "Show Entry Signals", group="Visual")
+show_trade_info = input.bool(true, "Show Trade Info Table", group="Visual")
+
+// =============================================================================
+// CALCULATIONS
+// =============================================================================
+
+// Session-based VWAP (resets each session)
+vwap_value = ta.vwap
+
+// Check if current time matches entry time
+is_entry_time() =>
+    current_hour = hour(time, "America/New_York")
+    current_minute = minute(time, "America/New_York")
+    current_hour == entry_hour and current_minute == entry_minute
+
+// Check if it's time to force close trades (15:55 ET)
+is_force_close_time() =>
+    current_hour = hour(time, "America/New_York")
+    current_minute = minute(time, "America/New_York")
+    (current_hour == 15 and current_minute >= 55) or current_hour > 15
+
+// =============================================================================
+// STRATEGY VARIABLES
+// =============================================================================
+
+var float vwap_at_entry = na
+var float entry_price = na
+var float stop_loss_price = na
+var int trades_today = 0
+var string trade_direction = na
+var bool position_opened = false
+
+// Reset daily counters
+if ta.change(dayofweek) != 0 or (hour(time, "America/New_York") == 0 and minute(time, "America/New_York") == 0)
+    trades_today := 0
+
+// =============================================================================
+// ENTRY LOGIC
+// =============================================================================
+
+// Check entry conditions at specified time
+if is_entry_time() and trades_today < max_trades_per_day and strategy.position_size == 0
+    
+    // Calculate distance from VWAP in ticks
+    distance_from_vwap_ticks = math.abs(close - vwap_value) / syminfo.mintick
+    
+    // Check if price is not exactly at VWAP and meets minimum distance
+    price_not_at_vwap = close != vwap_value
+    meets_min_distance = distance_from_vwap_ticks >= min_vwap_distance_ticks
+    
+    if price_not_at_vwap and meets_min_distance
+        
+        // Store values at entry
+        vwap_at_entry := vwap_value
+        entry_price := close
+        
+        // Calculate stop loss based on previous candle range
+        prev_candle_range = high[1] - low[1]
+        sl_distance = 0.5 * prev_candle_range
+        
+        // Convert buffer ticks to price
+        sl_buffer_price = sl_buffer_ticks * syminfo.mintick
+        
+        // Determine trade direction and execute
+        if close > vwap_value
+            // Price above VWAP -> Go SHORT (expect reversion down to VWAP)
+            trade_direction := "SHORT"
+            stop_loss_price := entry_price + sl_distance + sl_buffer_price
+            
+            strategy.entry("Short", strategy.short, qty=trade_quantity)
+            strategy.exit("Exit Short", "Short", 
+                         stop=stop_loss_price, 
+                         limit=vwap_at_entry)
+            
+        else if close < vwap_value
+            // Price below VWAP -> Go LONG (expect reversion up to VWAP)
+            trade_direction := "LONG"
+            stop_loss_price := entry_price - sl_distance - sl_buffer_price
+            
+            strategy.entry("Long", strategy.long, qty=trade_quantity)
+            strategy.exit("Exit Long", "Long", 
+                         stop=stop_loss_price, 
+                         limit=vwap_at_entry)
+        
+        // Increment trade counter
+        trades_today := trades_today + 1
+        position_opened := true
+        
+        // Add entry signal label
+        if show_entry_signals
+            label_color = trade_direction == "LONG" ? color.green : color.red
+            label_text = trade_direction + " @ " + str.tostring(entry_price, "#.##") + 
+                        "\nVWAP: " + str.tostring(vwap_at_entry, "#.##") + 
+                        "\nSL: " + str.tostring(stop_loss_price, "#.##")
+            label.new(bar_index, high, label_text, 
+                     color=label_color, 
+                     textcolor=color.white, 
+                     style=label.style_label_down, 
+                     size=size.normal)
+
+// =============================================================================
+// EXIT LOGIC
+// =============================================================================
+
+// Force close all positions at 15:55 ET regardless of profit/loss
+if is_force_close_time() and strategy.position_size != 0
+    strategy.close_all("EOD Force Close")
+    
+    // Add force close label
+    if show_entry_signals
+        label.new(bar_index, low, "FORCE CLOSE\n15:55 ET", 
+                 color=color.orange, 
+                 textcolor=color.white, 
+                 style=label.style_label_up, 
+                 size=size.normal)
+
+// =============================================================================
+// VISUALIZATION
+// =============================================================================
+
+// Plot VWAP
+plot(show_vwap ? vwap_value : na, "VWAP", color=color.blue, linewidth=2)
+
+// Plot entry time vertical line
+bgcolor(is_entry_time() ? color.new(color.yellow, 90) : na, title="Entry Time")
+
+// =============================================================================
+// TRADE INFO TABLE
+// =============================================================================
+
+if show_trade_info and barstate.islast
+    var table info_table = table.new(position.top_right, 2, 9, bgcolor=color.white, border_width=1)
+    
+    table.cell(info_table, 0, 0, "Entry Time", text_color=color.black, bgcolor=color.gray)
+    entry_time_display = str.format("{0,number,00}:{1,number,00} ET", entry_hour, entry_minute)
+    table.cell(info_table, 1, 0, entry_time_display, text_color=color.black)
+    
+    table.cell(info_table, 0, 1, "Trades Today", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 1, str.tostring(trades_today) + "/" + str.tostring(max_trades_per_day), text_color=color.black)
+    
+    table.cell(info_table, 0, 2, "Position", text_color=color.black, bgcolor=color.gray)
+    position_text = strategy.position_size > 0 ? "LONG" : strategy.position_size < 0 ? "SHORT" : "NONE"
+    table.cell(info_table, 1, 2, position_text, text_color=color.black)
+    
+    table.cell(info_table, 0, 3, "Current VWAP", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 3, str.tostring(vwap_value, "#.##"), text_color=color.black)
+    
+    table.cell(info_table, 0, 4, "VWAP @ Entry", text_color=color.black, bgcolor=color.gray)
+    vwap_entry_text = not na(vwap_at_entry) ? str.tostring(vwap_at_entry, "#.##") : "N/A"
+    table.cell(info_table, 1, 4, vwap_entry_text, text_color=color.black)
+    
+    table.cell(info_table, 0, 5, "Entry Price", text_color=color.black, bgcolor=color.gray)
+    entry_text = not na(entry_price) ? str.tostring(entry_price, "#.##") : "N/A"
+    table.cell(info_table, 1, 5, entry_text, text_color=color.black)
+    
+    table.cell(info_table, 0, 6, "Stop Loss", text_color=color.black, bgcolor=color.gray)
+    sl_text = not na(stop_loss_price) ? str.tostring(stop_loss_price, "#.##") : "N/A"
+    table.cell(info_table, 1, 6, sl_text, text_color=color.black)
+    
+    table.cell(info_table, 0, 7, "SL Buffer", text_color=color.black, bgcolor=color.gray)
+    buffer_text = str.tostring(sl_buffer_ticks) + " ticks"
+    table.cell(info_table, 1, 7, buffer_text, text_color=color.black)
+    
+    table.cell(info_table, 0, 8, "Distance from VWAP", text_color=color.black, bgcolor=color.gray)
+    current_distance = math.abs(close - vwap_value) / syminfo.mintick
+    distance_text = str.tostring(current_distance, "#.#") + " ticks"
+    table.cell(info_table, 1, 8, distance_text, text_color=color.black)
+
+// =============================================================================
+// ALERTS
+// =============================================================================
+
+if is_entry_time() and trades_today < max_trades_per_day
+    distance_ticks = math.abs(close - vwap_value) / syminfo.mintick
+    if close != vwap_value and distance_ticks >= min_vwap_distance_ticks
+        direction = close > vwap_value ? "SHORT" : "LONG"
+        alert_message = "VWAP Reversion Entry: " + direction + " at " + str.tostring(close) + 
+                       " | VWAP: " + str.tostring(vwap_value) + 
+                       " | Distance: " + str.tostring(distance_ticks, "#.#") + " ticks"
+        alert(alert_message) 

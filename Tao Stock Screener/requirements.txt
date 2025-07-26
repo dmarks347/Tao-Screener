@@ -1,0 +1,30 @@
+# Core dependencies
+streamlit>=1.28.0
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Data fetching
+yfinance>=0.2.0
+requests>=2.31.0
+
+# Technical analysis
+talib-binary>=0.4.25  # For Windows users, use TA-Lib>=0.4.25 on Linux/Mac
+pandas-ta>=0.3.14b
+
+# Visualization
+plotly>=5.15.0
+
+# Async/concurrency
+aiohttp>=3.8.0
+
+# Utilities
+python-dotenv>=1.0.0
+openpyxl>=3.1.0  # For Excel export support
+
+# Webull API (official SDK)
+webull>=1.0.0
+
+# Development dependencies (optional)
+# pytest>=7.4.0
+# black>=23.0.0
+# flake8>=6.0.0 

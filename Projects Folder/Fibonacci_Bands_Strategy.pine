@@ -1,0 +1,189 @@
+//@version=5
+strategy("Fibonacci Bands Mean Reversion Strategy", overlay=true, max_lines_count=500, default_qty_type=strategy.percent_of_equity, default_qty_value=100)
+
+// ===== INPUTS =====
+// Time Settings
+start_time = input.string("09:30", "Trading Start Time", options=["00:00", "00:15", "00:30", "00:45", "01:00", "01:15", "01:30", "01:45", "02:00", "02:15", "02:30", "02:45", "03:00", "03:15", "03:30", "03:45", "04:00", "04:15", "04:30", "04:45", "05:00", "05:15", "05:30", "05:45", "06:00", "06:15", "06:30", "06:45", "07:00", "07:15", "07:30", "07:45", "08:00", "08:15", "08:30", "08:45", "09:00", "09:15", "09:30", "09:45", "10:00", "10:15", "10:30", "10:45", "11:00", "11:15", "11:30", "11:45", "12:00", "12:15", "12:30", "12:45", "13:00", "13:15", "13:30", "13:45", "14:00", "14:15", "14:30", "14:45", "15:00", "15:15", "15:30", "15:45", "16:00", "16:15", "16:30", "16:45", "17:00", "17:15", "17:30", "17:45", "18:00", "18:15", "18:30", "18:45", "19:00", "19:15", "19:30", "19:45", "20:00", "20:15", "20:30", "20:45", "21:00", "21:15", "21:30", "21:45", "22:00", "22:15", "22:30", "22:45", "23:00", "23:15", "23:30", "23:45"], group="Trading Hours", tooltip="Time when strategy starts looking for trade entries (Eastern Time)")
+end_time = input.string("15:00", "Trading End Time", options=["00:00", "00:15", "00:30", "00:45", "01:00", "01:15", "01:30", "01:45", "02:00", "02:15", "02:30", "02:45", "03:00", "03:15", "03:30", "03:45", "04:00", "04:15", "04:30", "04:45", "05:00", "05:15", "05:30", "05:45", "06:00", "06:15", "06:30", "06:45", "07:00", "07:15", "07:30", "07:45", "08:00", "08:15", "08:30", "08:45", "09:00", "09:15", "09:30", "09:45", "10:00", "10:15", "10:30", "10:45", "11:00", "11:15", "11:30", "11:45", "12:00", "12:15", "12:30", "12:45", "13:00", "13:15", "13:30", "13:45", "14:00", "14:15", "14:30", "14:45", "15:00", "15:15", "15:30", "15:45", "16:00", "16:15", "16:30", "16:45", "17:00", "17:15", "17:30", "17:45", "18:00", "18:15", "18:30", "18:45", "19:00", "19:15", "19:30", "19:45", "20:00", "20:15", "20:30", "20:45", "21:00", "21:15", "21:30", "21:45", "22:00", "22:15", "22:30", "22:45", "23:00", "23:15", "23:30", "23:45"], group="Trading Hours", tooltip="Time when strategy stops looking for new trade entries (Eastern Time)")
+
+// Fixed force close time
+close_time = "15:55"
+
+// Fibonacci Settings
+int period = input.int(20, title="Period", tooltip="Number of periods for SMMA calculation used as the center line for Fibonacci bands")
+float width = input.float(1, title="Width", step=0.1, minval=0.5, maxval=3, tooltip="Multiplier for Fibonacci band width - higher values create wider bands")
+float price = input.source(close, title="Source", tooltip="Price source for calculations (typically close price)")
+
+// Hardcoded Fibonacci Ratios
+float fibRatio1 = 1.618
+float fibRatio2 = 2.618
+float fibRatio3 = 4.236
+
+// RSI Settings
+int rsi_length = input.int(14, "RSI Length", minval=1, maxval=50, tooltip="Number of periods for RSI calculation used as confluence filter")
+float rsi_upper = input.float(70, "RSI Upper Level", minval=50, maxval=100, step=1, tooltip="RSI level above which market is considered overbought (used for short setups)")
+float rsi_lower = input.float(30, "RSI Lower Level", minval=0, maxval=50, step=1, tooltip="RSI level below which market is considered oversold (used for long setups)")
+
+// Setup Selection
+short_setup = input.string("Both", "Short Setup", options=["Setup 1", "Setup 2", "Both"], tooltip="Setup 1: Fib2 rejection + RSI confluence | Setup 2: Fib3 rejection | Both: Use both setups")
+long_setup = input.string("Both", "Long Setup", options=["Setup 1", "Setup 2", "Both"], tooltip="Setup 1: Fib2 bounce + RSI confluence | Setup 2: Fib3 bounce | Both: Use both setups")
+
+// Take Profit Settings
+tp_option = input.string("Mid Line", "Take Profit Option", options=["Mid Line", "SL Multiple"], tooltip="Mid Line: Take profit at SMMA center line | SL Multiple: Take profit at multiple of stop loss distance")
+float tp_multiplier = input.float(1.0, "TP Multiplier", minval=0.1, maxval=10.0, step=0.1, tooltip="Risk-reward ratio when using SL Multiple option (1.0 = 1:1, 2.0 = 1:2, etc.)")
+
+// Visual Settings
+color col_top = input.color(#e60060, "Top Color", tooltip="Color for upper Fibonacci bands")
+color col_bot = input.color(color.lime, "Bottom Color", tooltip="Color for lower Fibonacci bands")
+bool show_labels = input.bool(true, "Show Setup Labels", tooltip="Display setup numbers (S1, S2, L1, L2) on chart when trades are taken")
+
+// ===== CALCULATIONS =====
+// SMMA Function
+smma(src, length) =>
+    var float smma_value = na
+    series float sma = ta.sma(src, length)
+    if na(smma_value[1])
+        smma_value := sma
+    else
+        smma_value := (smma_value[1] * (length - 1) + src) / length
+    smma_value
+
+// Calculate Fibonacci Levels
+series float ATR = smma(ta.atr(200), 100)
+series float smma = smma(price, period)
+series float r1 = ATR * fibRatio1 * width
+series float r2 = ATR * fibRatio2 * width
+series float r3 = ATR * fibRatio3 * width
+
+// Fibonacci Bands
+series float fibTop1 = smma + r1
+series float fibTop2 = smma + r2
+series float fibTop3 = smma + r3
+series float fibBott1 = smma - r1
+series float fibBott2 = smma - r2
+series float fibBott3 = smma - r3
+
+// RSI
+series float rsi_value = ta.rsi(close, rsi_length)
+
+// Time conversion functions
+time_to_minutes(time_str) =>
+    // Convert "HH:MM" to HHMM format and extract hours/minutes
+    time_no_colon = str.replace(time_str, ":", "")
+    time_num = str.tonumber(time_no_colon)
+    hours = math.floor(time_num / 100)
+    minutes = time_num % 100
+    hours * 60 + minutes
+
+current_time_minutes() =>
+    current_hour = hour(time)
+    current_minute = minute(time)
+    current_hour * 60 + current_minute
+
+// Time Functions
+is_trading_time() =>
+    current_minutes = current_time_minutes()
+    start_minutes = time_to_minutes(start_time)
+    end_minutes = time_to_minutes(end_time)
+    current_minutes >= start_minutes and current_minutes <= end_minutes
+
+is_close_time() =>
+    current_minutes = current_time_minutes()
+    close_minutes = time_to_minutes(close_time)
+    current_minutes >= close_minutes
+
+// ===== SETUP CONDITIONS =====
+// Short Setup 1: Close above fib2 + RSI > 70, then bearish close + RSI < 70
+short_setup1_trigger = close > fibTop2 and rsi_value > rsi_upper
+short_setup1_entry = short_setup1_trigger[1] and close < open and rsi_value < rsi_upper
+
+// Short Setup 2: Close above fib3 + RSI > 70, then close below fib3
+short_setup2_trigger = close > fibTop3 and rsi_value > rsi_upper
+short_setup2_entry = short_setup2_trigger[1] and close < fibTop3
+
+// Long Setup 1: Close below fib2 + RSI < 30, then bullish close + RSI > 30
+long_setup1_trigger = close < fibBott2 and rsi_value < rsi_lower
+long_setup1_entry = long_setup1_trigger[1] and close > open and rsi_value > rsi_lower
+
+// Long Setup 2: Close below fib3 + RSI < 30, then close above fib3
+long_setup2_trigger = close < fibBott3 and rsi_value < rsi_lower
+long_setup2_entry = long_setup2_trigger[1] and close > fibBott3
+
+// ===== ENTRY LOGIC =====
+// Determine which setups to use
+use_short1 = short_setup == "Setup 1" or short_setup == "Both"
+use_short2 = short_setup == "Setup 2" or short_setup == "Both"
+use_long1 = long_setup == "Setup 1" or long_setup == "Both"
+use_long2 = long_setup == "Setup 2" or long_setup == "Both"
+
+// Entry conditions
+short_entry = is_trading_time() and strategy.position_size <= 0 and 
+              ((use_short1 and short_setup1_entry) or (use_short2 and short_setup2_entry))
+
+long_entry = is_trading_time() and strategy.position_size >= 0 and 
+             ((use_long1 and long_setup1_entry) or (use_long2 and long_setup2_entry))
+
+// ===== STOP LOSS CALCULATION =====
+// Calculate highest/lowest of 5 candles before entry
+var float short_sl = na
+var float long_sl = na
+
+if short_entry
+    short_sl := math.max(high[1], math.max(high[2], math.max(high[3], math.max(high[4], high[5]))))
+
+if long_entry
+    long_sl := math.min(low[1], math.min(low[2], math.min(low[3], math.min(low[4], low[5]))))
+
+// ===== TAKE PROFIT CALCULATION =====
+var float short_tp = na
+var float long_tp = na
+
+if short_entry
+    if tp_option == "Mid Line"
+        short_tp := smma
+    else
+        short_tp := close - (short_sl - close) * tp_multiplier
+
+if long_entry
+    if tp_option == "Mid Line"
+        long_tp := smma
+    else
+        long_tp := close + (close - long_sl) * tp_multiplier
+
+// ===== TRADE EXECUTION =====
+if short_entry
+    strategy.entry("Short", strategy.short)
+    if show_labels
+        label.new(bar_index, high, "S" + (short_setup1_entry ? "1" : "2"), 
+                 color=color.red, textcolor=color.white, style=label.style_label_down)
+
+if long_entry
+    strategy.entry("Long", strategy.long)
+    if show_labels
+        label.new(bar_index, low, "L" + (long_setup1_entry ? "1" : "2"), 
+                 color=color.green, textcolor=color.white, style=label.style_label_up)
+
+// ===== EXIT LOGIC =====
+// Stop Loss and Take Profit
+if strategy.position_size < 0  // Short position
+    strategy.exit("Short Exit", "Short", stop=short_sl, limit=short_tp)
+
+if strategy.position_size > 0  // Long position
+    strategy.exit("Long Exit", "Long", stop=long_sl, limit=long_tp)
+
+// Force close at end time
+if is_close_time() and strategy.position_size != 0
+    strategy.close_all()
+
+// ===== PLOTTING =====
+plot(fibTop3, "Fib Top 3", color=color.new(col_top, 50), linewidth=1)
+plot(fibTop2, "Fib Top 2", color=color.new(col_top, 50), linewidth=1)
+plot(fibTop1, "Fib Top 1", color=color.new(col_top, 80), linewidth=1)
+plot(smma, "SMMA", color=chart.fg_color, linewidth=1)
+plot(fibBott1, "Fib Bottom 1", color=color.new(col_bot, 80), linewidth=1)
+plot(fibBott2, "Fib Bottom 2", color=color.new(col_bot, 50), linewidth=1)
+plot(fibBott3, "Fib Bottom 3", color=color.new(col_bot, 50), linewidth=1)
+
+// Plot entry signals
+plotshape(short_entry, "Short Entry", shape.triangledown, location.abovebar, color.red, size=size.small)
+plotshape(long_entry, "Long Entry", shape.triangleup, location.belowbar, color.green, size=size.small) 

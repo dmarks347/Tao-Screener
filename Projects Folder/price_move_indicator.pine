@@ -1,0 +1,30 @@
+//@version=5
+indicator("Large Price Swing Detector", overlay=true)
+
+// User inputs
+y = input.int(10, "Interval (minutes)", minval=1, maxval=60)
+x = input.float(3.0, "Swing Threshold (%)", minval=0.1, maxval=20.0, step=0.1)
+
+// Convert interval in minutes to bars (works for intraday timeframes)
+interval_bars = math.round(y * 60 / timeframe.in_seconds(timeframe.period))
+
+// Track the highest high and lowest low in the interval
+delta_high = ta.highest(high, interval_bars)
+delta_low = ta.lowest(low, interval_bars)
+
+// Calculate percentage moves from lowest to highest and vice versa
+up_swing = (delta_high - delta_low) / delta_low * 100
+down_swing = (delta_low - delta_high) / delta_high * 100
+
+// Detect upward swing
+is_up_swing = up_swing >= x and high == delta_high
+// Detect downward swing
+is_down_swing = down_swing <= -x and low == delta_low
+
+// Only mark the first swing in overlapping intervals
+var float last_swing_bar = na
+new_swing = na(last_swing_bar) or bar_index - last_swing_bar >= interval_bars
+
+if (is_up_swing or is_down_swing) and new_swing
+    line.new(bar_index, low, bar_index, high, color=color.yellow, width=3)
+    last_swing_bar := bar_index 

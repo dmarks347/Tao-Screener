@@ -1,0 +1,337 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2822
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 // This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/\
+// \'a9 YouSufMeSalm\
+//@version=5\
+\
+indicator("FXC Order Block Finder", shorttitle="FXC OB Finder", format=format.price, precision=0, overlay=true,max_lines_count=500,max_boxes_count=500,max_bars_back=500)\
+\
+GetPipSize() =>\
+    syminfo.mintick * (syminfo.type == "forex" ? 10 : 1)\
+    \
+color gray0 = color.new(color.gray, 0)\
+color yellow0 = color.new(#FFF700, 0)\
+// Define "n" as the number of periods and keep a minimum value of 2 for error handling.\
+n = input.int(title="Periods", defval=2, minval=2)\
+linecount = input.int(defval=50,  title="Maximum fractals Lines", minval=1, maxval=500, group="Chart Customization")\
+bullboxcolor = input.color(defval=#004d40,   title="Bullish OB Box",   inline='customcolor', group="Chart Customization Box")\
+bearboxcolor  = input.color(defval= #a86161, title="Bearish OB Box",   inline='customcolor', group="Chart Customization Box")\
+adtransp  = input.int(defval=65,          title="Box Transparency", minval=1, maxval=100, group="Chart Customization Box")\
+adboxcount = input.int(defval=50,  title="Maximum Box Displayed",minval=1, maxval=100, group="Chart Customization")\
+MaxBackbarB= input.int(defval=10,title="Maximum bar to check before fractls breakout",minval=1,maxval=50)\
+MaxBackbarA= input.int(defval=3,title="Maximum bar to check after fractls breakout",minval=1,maxval=50)\
+MaxBoxHeight = input.int(defval=50,  title="Maximum boxes Height",minval=0, maxval=700, group="Chart Customization")*GetPipSize() \
+MinBoxHeight = input.int(defval=10,  title="Minimum boxes Height",minval=0, maxval=700, group="Chart Customization")*GetPipSize()\
+\
+bool showgreydiamond = input(defval=false, title='Show Diamond For Back Testing' ,group='=== Information ===')\
+Imbcol = input.color(yellow0, 'Imbalance Colour', inline="1" ,group='=== Information ===')\
+Dimcol = input.color(gray0, 'Imbalance Colour', inline="1" ,group='=== Information ===')\
+imbalanceboxcount = input.int(defval=50,  title="Maximum imbalance boxes Displayed",minval=1, maxval=100, group="Chart Customization")\
+bool Drawtopattern = input(defval=true, title='Draw to the end of the pattern' ,group='Chart Customization')\
+\
+//global objects array Variables\
+var box[] bearboxarray = array.new_box()\
+var box[] bullboxarray = array.new_box()\
+var box[] imbalancearray = array.new_box()\
+var line[] uplinearray = array.new_line()\
+var line[] dnlinearray = array.new_line()\
+\
+\
+// UpFractal\
+bool upflagDownFrontier = true\
+bool upflagUpFrontier0 = true\
+bool upflagUpFrontier1 = true\
+bool upflagUpFrontier2 = true\
+bool upflagUpFrontier3 = true\
+bool upflagUpFrontier4 = true\
+\
+//Box Color Variables\
+var color adbearboxcolor       = color.new(bearboxcolor, adtransp)\
+var color adbullboxcolor       = color.new(bullboxcolor,  adtransp)\
+var color adbearborderboxcolor = color.new(bearboxcolor, adtransp)\
+var color adbullborderboxcolor = color.new(bullboxcolor,  adtransp)\
+\
+diff=0.0\
+  \
+openBarPrevious = open[1]\
+closeBarPrevious = close[1]\
+openBarCurrent = open\
+closeBarCurrent = close\
+\
+//If current bar open is less than equal to the previous bar close AND current bar open is less than previous bar open AND current bar close is greater than previous bar open THEN True\
+bullishEngulfing = (openBarCurrent <= closeBarPrevious) and (openBarCurrent < openBarPrevious) and (closeBarCurrent > openBarPrevious)\
+//If current bar open is greater than equal to previous bar close AND current bar open is greater than previous bar open AND current bar close is less than previous bar open THEN True\
+bearishEngulfing = (openBarCurrent >= closeBarPrevious) and (openBarCurrent > openBarPrevious) and (closeBarCurrent < openBarPrevious)\
+\
+//bullishEngulfing/bearishEngulfing return a value of 1 or 0; if 1 then plot on chart, if 0 then don't plot\
+plotshape(bullishEngulfing, title = "Bullish Engulfing",style = shape.triangleup, location = location.belowbar, color = color.green, size = size.tiny)\
+plotshape(bearishEngulfing, title = "Bearish Engulfing", style = shape.triangledown , location = location.abovebar, color = color.red, size = size.tiny)\
+\
+alertcondition(bullishEngulfing, title = "Bullish Engulfing", message = "[CurrencyPair] [TimeFrame], Bullish candle engulfing previous candle")\
+alertcondition(bearishEngulfing, title = "Bearish Engulfing", message = "[CurrencyPair] [TimeFrame], Bearish candle engulfing previous candle")\
+\
+for i = 1 to n\
+    upflagDownFrontier := upflagDownFrontier and (high[n-i] < high[n])\
+    upflagUpFrontier0 := upflagUpFrontier0 and (high[n+i] < high[n])\
+    upflagUpFrontier1 := upflagUpFrontier1 and (high[n+1] <= high[n] and high[n+i + 1] < high[n])\
+    upflagUpFrontier2 := upflagUpFrontier2 and (high[n+1] <= high[n] and high[n+2] <= high[n] and high[n+i + 2] < high[n])\
+    upflagUpFrontier3 := upflagUpFrontier3 and (high[n+1] <= high[n] and high[n+2] <= high[n] and high[n+3] <= high[n] and high[n+i + 3] < high[n])\
+    upflagUpFrontier4 := upflagUpFrontier4 and (high[n+1] <= high[n] and high[n+2] <= high[n] and high[n+3] <= high[n] and high[n+4] <= high[n] and high[n+i + 4] < high[n])\
+flagUpFrontier = upflagUpFrontier0 or upflagUpFrontier1 or upflagUpFrontier2 or upflagUpFrontier3 or upflagUpFrontier4\
+\
+upFractal = (upflagDownFrontier and flagUpFrontier)\
+upbreak=0\
+dnbreak=0\
+// downFractal\
+bool downflagDownFrontier = true\
+bool downflagUpFrontier0 = true\
+bool downflagUpFrontier1 = true\
+bool downflagUpFrontier2 = true\
+bool downflagUpFrontier3 = true\
+bool downflagUpFrontier4 = true\
+\
+for i = 1 to n\
+    downflagDownFrontier := downflagDownFrontier and (low[n-i] > low[n])\
+    downflagUpFrontier0 := downflagUpFrontier0 and (low[n+i] > low[n])\
+    downflagUpFrontier1 := downflagUpFrontier1 and (low[n+1] >= low[n] and low[n+i + 1] > low[n])\
+    downflagUpFrontier2 := downflagUpFrontier2 and (low[n+1] >= low[n] and low[n+2] >= low[n] and low[n+i + 2] > low[n])\
+    downflagUpFrontier3 := downflagUpFrontier3 and (low[n+1] >= low[n] and low[n+2] >= low[n] and low[n+3] >= low[n] and low[n+i + 3] > low[n])\
+    downflagUpFrontier4 := downflagUpFrontier4 and (low[n+1] >= low[n] and low[n+2] >= low[n] and low[n+3] >= low[n] and low[n+4] >= low[n] and low[n+i + 4] > low[n])\
+flagDownFrontier = downflagUpFrontier0 or downflagUpFrontier1 or downflagUpFrontier2 or downflagUpFrontier3 or downflagUpFrontier4\
+\
+downFractal = (downflagDownFrontier and flagDownFrontier)\
+\
+//down fractasl line  \
+if downFractal\
+    dnline  =  line.new(bar_index[n],low[n],bar_index[0],low[n],style=line.style_dashed,color=color.green)\
+    if (array.size(dnlinearray) > linecount)\
+        line.delete(array.shift(dnlinearray))\
+    array.push(dnlinearray, dnline)\
+\
+\
+if (array.size(dnlinearray) > 0)\
+    for i = array.size(dnlinearray) - 1 to 0\
+        hline       = array.get(dnlinearray, i)\
+        linePrice   = line.get_y1(hline)\
+        lineRight = line.get_x2(hline)\
+        lineLeft = line.get_x1(hline)\
+        if (bar_index[1]== lineRight and not (low < linePrice))\
+            line.set_x2(array.get(dnlinearray, i), bar_index[0])\
+        else if (bar_index[1]== lineRight and low <= linePrice)\
+            // if (array.size(imbalancearray) > 0)\
+            //     for z = array.size(imbalancearray) - 1 to 0\
+            //         cutbox       = array.get(imbalancearray, z)\
+            //         boxrightzone = box.get_right(cutbox)\
+            //         boxleftzone =  box.get_left(cutbox)\
+            //         loop=bar_index[1]-lineLeft>MaxBackbarB?MaxBackbarB: bar_index[1]-lineLeft \
+                \
+            //         for x= 1 to loop\
+            //             if(x>=0)\
+            //                 if (bar_index[x]== boxleftzone and bullishEngulfing[x])\
+            //                     boxhighzone = box.get_bottom(cutbox) \
+            //                     boxlowzone  = Drawtopattern?low[x+1]:low[x]\
+            //                     diff:=math.abs(boxhighzone-boxlowzone)\
+            //                     if(diff>=MinBoxHeight and diff <=MaxBoxHeight)\
+            //                         right=x\
+            //                         left=Drawtopattern?time[x+1]:time[x]\
+            //                         for v=x-1 to 0\
+            //                             if ((x+1== right and not ((high[v] > boxlowzone and low[v] < boxlowzone) or (high[v] > boxhighzone and low[v] < boxhighzone))))\
+            //                                 right:=right-1\
+            //                         found=false\
+            //                         if (array.size(bearboxarray) > 0)\
+            //                             for xx = array.size(bearboxarray) - 1 to 0\
+            //                                 box       = array.get(bearboxarray, xx)\
+            //                                 boxleft = box.get_left(box)\
+            //                                 if (left == boxleft )\
+            //                                     found:=true\
+            //                         if(found==false)\
+            //                             bearbox     = box.new(left ,boxhighzone, time[right], boxlowzone, border_color=adbearborderboxcolor,xloc=xloc.bar_time, border_style=line.style_dashed, bgcolor=adbearboxcolor)\
+            //                             if (array.size(bearboxarray) > adboxcount)\
+            //                                 box.delete(array.shift(bearboxarray))\
+            //                             array.push(bearboxarray, bearbox)\
+                                        \
+            dnbreak:=1\
+\
+if upFractal\
+    upline  = line.new(bar_index[n],high[n],bar_index[0],high[n],style=line.style_dashed,color=color.red) \
+    if (array.size(uplinearray) > linecount)\
+        line.delete(array.shift(uplinearray))\
+    array.push(uplinearray, upline)\
+\
+//upper fractals line  \
+if (array.size(uplinearray) > 0)\
+    for i = array.size(uplinearray) - 1 to 0\
+        hline       = array.get(uplinearray, i)\
+        linePrice   = line.get_y1(hline)\
+        lineRight = line.get_x2(hline)\
+        lineLeft = line.get_x1(hline)\
+        if (bar_index[1]== lineRight and not (high > linePrice))\
+            line.set_x2(array.get(uplinearray, i), bar_index[0])\
+        else if(bar_index[1]== lineRight and high >= linePrice)\
+            // if (array.size(imbalancearray) > 0)\
+            //     for z = array.size(imbalancearray) - 1 to 0\
+            //         cutbox       = array.get(imbalancearray, z)\
+            //         boxrightzone = box.get_right(cutbox)\
+            //         boxleftzone =  box.get_left(cutbox)\
+            //         loop=bar_index[1]-lineLeft>MaxBackbarB?MaxBackbarB: bar_index[1]-lineLeft \
+            //         for x= 1 to loop\
+            //             if(x>=0)\
+            //                 if (bar_index[x]== boxleftzone and (bearishEngulfing[x] ))\
+            //                     boxhighzone = box.get_top(cutbox) \
+            //                     boxlowzone  = Drawtopattern?high[x+1]:high[x]\
+            //                     diff:=math.abs(boxhighzone-boxlowzone)\
+            //                     if(diff>=MinBoxHeight and diff <=MaxBoxHeight)\
+            //                         right=x\
+            //                         left=Drawtopattern?time[x+1]:time[x]\
+            //                         for v=x-1 to 0\
+            //                             if ((v+1== right and not ((high[v] > boxlowzone and low[v] < boxlowzone) or (high[v] > boxhighzone and low[v] < boxhighzone))))\
+            //                                 right:=right-1\
+            //                         found = false\
+            //                         if (array.size(bullboxarray) > 0)\
+            //                             for xx = array.size(bullboxarray) - 1 to 0\
+            //                                 box       = array.get(bullboxarray, xx)\
+            //                                 boxleft = box.get_left(box)\
+            //                                 if (left == boxleft )\
+            //                                     found:=true\
+            //                         if(found==false)         \
+            //                             bullbox     = box.new(left, boxhighzone, time[right], boxlowzone, border_color=adbearborderboxcolor,xloc=xloc.bar_time, border_style=line.style_dashed, bgcolor=adbullboxcolor)\
+            //                             if (array.size(bullboxarray) > adboxcount)\
+            //                                 box.delete(array.shift(bullboxarray))\
+            //                             array.push(bullboxarray, bullbox)\
+            upbreak:=1\
+            \
+plotshape(downFractal,  title = "Down Fractals",style=shape.triangledown, location=location.belowbar, offset=-n, color=#F44336, size = size.small)\
+plotshape(upFractal,  title = "Up Fractals",style=shape.triangleup,   location=location.abovebar, offset=-n, color=#009688, size = size.small)\
+\
+\
+//Bullish OB Box Calculation\
+\
+f_choppedoffbull(bullboxarray) =>\
+    if (array.size(bullboxarray) > 0)\
+        for i = array.size(bullboxarray) - 1 to 0\
+            cutbox       = array.get(bullboxarray, i)\
+            boxlowzone   = box.get_bottom(cutbox)\
+            boxhighzone  = box.get_top(cutbox)\
+            boxrightzone = box.get_right(cutbox)\
+            if ( (time[1]== boxrightzone and not ((high > boxlowzone and low < boxlowzone) or (high > boxhighzone and low < boxhighzone))))\
+                box.set_right(array.get(bullboxarray, i), time)\
+\
+TopImbalance = low[2] <= open[1] and high[0] >= close[1]\
+TopImbalancesize = low[2] - high[0]\
+if TopImbalance and TopImbalancesize > 0\
+    BOX1 = box.new(left=bar_index[1], top=low[2], right=bar_index[0], bottom=high[0])\
+    box.set_bgcolor(BOX1, Imbcol )\
+    box.set_border_color(BOX1, Imbcol )\
+    if (array.size(imbalancearray) > imbalanceboxcount)\
+        box.delete(array.shift(imbalancearray))\
+    array.push(imbalancearray, BOX1)\
+    // for i =0 to MaxBackbarA\
+    //     if(upbreak[i]==1 and(bullishEngulfing[1] ))\
+    //         boxlowzone  = low[2] \
+    //         boxhighzone = Drawtopattern?high[2]:high[1]\
+    //         diff:=math.abs(boxhighzone-boxlowzone)\
+    //         if(diff>=MinBoxHeight and diff <=MaxBoxHeight)\
+    //             bullbox     = box.new(Drawtopattern?time[2]:time[1], boxhighzone, time, boxlowzone, border_color=adbullborderboxcolor,xloc=xloc.bar_time ,border_style=line.style_dashed, bgcolor=adbullboxcolor)\
+    //             if (array.size(bullboxarray) > adboxcount)\
+    //                 box.delete(array.shift(bullboxarray))\
+    //             array.push(bullboxarray, bullbox)\
+                   \
+f_choppedoffbull(bullboxarray)\
+   \
+//Bearish OB Box Calculation\
+f_choppedoffbear(bearboxarray) =>\
+    if (array.size(bearboxarray) > 0)\
+        for i = array.size(bearboxarray) - 1 to 0\
+            cutbox       = array.get(bearboxarray, i)\
+            boxlowzone   = box.get_bottom(cutbox)\
+            boxhighzone  = box.get_top(cutbox)\
+            boxrightzone = box.get_right(cutbox)\
+            if ((time[1] == boxrightzone and not ((high > boxlowzone and low < boxlowzone) or (high > boxhighzone and low < boxhighzone))))\
+                box.set_right(array.get(bearboxarray, i), time)\
+f_choppedoffbear(bearboxarray)\
+BottomImbalance = high[2] >= open[1] and low[0] <= close[1]\
+BottomImbalancesize = low[0] - high[2]\
+if BottomImbalance and BottomImbalancesize > 0\
+    BOX2 = box.new(left=bar_index[1], top=low[0], right=bar_index[0], bottom=high[2])\
+    box.set_bgcolor(BOX2, Imbcol )\
+    box.set_border_color(BOX2, Imbcol )\
+    if (array.size(imbalancearray) > imbalanceboxcount)\
+        box.delete(array.shift(imbalancearray))\
+    array.push(imbalancearray, BOX2)\
+    // for i =0 to MaxBackbarA\
+    //     if(dnbreak[i] ==1 and( bearishEngulfing[1] ))\
+    //         boxhighzone = high[2] \
+    //         boxlowzone  = Drawtopattern?low[2]:low[1]\
+    //         diff:=math.abs(boxhighzone-boxlowzone)\
+    //         if(diff>=MinBoxHeight and diff <=MaxBoxHeight)\
+    //             bearbox     = box.new(Drawtopattern?time[2]:time[1], boxhighzone, time, boxlowzone, border_color=adbearborderboxcolor,xloc=xloc.bar_time, border_style=line.style_dashed, bgcolor=adbearboxcolor)\
+    //             if (array.size(bearboxarray) > adboxcount)\
+    //                 box.delete(array.shift(bearboxarray))\
+    //             array.push(bearboxarray, bearbox)\
+               \
+\
+DownImbalance = TopImbalance and TopImbalancesize > 0?1:0\
+plotshape(DownImbalance[0] and showgreydiamond, style=shape.diamond, location=location.abovebar, color=Dimcol, size=size.tiny)\
+\
+UpImbalance = BottomImbalance and BottomImbalancesize > 0?1:0\
+plotshape(UpImbalance[0] and showgreydiamond, style=shape.diamond, location=location.belowbar, color=Dimcol, size=size.tiny)\
+\
+alertcondition(DownImbalance ,  title='Down Imbalance', message='Down Imbalance')\
+alertcondition(UpImbalance ,  title='Up Imbalance', message='Up Imbalance')\
+alertcondition(DownImbalance or UpImbalance ,  title='Imbalance Present ', message='Imbalance Present')\
+\
+for i=MaxBackbarA to 0\
+    if(dnbreak[i]==1)\
+        for z=i+MaxBackbarB to 2\
+            if(bearishEngulfing[z]==1 and (DownImbalance[z-1] or DownImbalance[z-2]))\
+                boxhighzone = Drawtopattern?high[z+1]:high[z]\
+                boxlowzone  = low[z+1]\
+                diff:=math.abs(boxhighzone-boxlowzone)\
+                if(diff>=MinBoxHeight and diff <=MaxBoxHeight)\
+                    left=Drawtopattern?time[z+1]:time[z]\
+                    found=false\
+                    if (array.size(bearboxarray) > 0)\
+                        for xx = array.size(bearboxarray) - 1 to 0\
+                            box       = array.get(bearboxarray, xx)\
+                            boxleft = box.get_left(box)\
+                            if (left == boxleft )\
+                                found:=true\
+                    if(found==false)\
+                        bearbox     = box.new(left, boxhighzone, time, boxlowzone, border_color=adbearborderboxcolor,xloc=xloc.bar_time, border_style=line.style_dashed, bgcolor=adbearboxcolor)\
+                        if (array.size(bearboxarray) > adboxcount)\
+                            box.delete(array.shift(bearboxarray))\
+                        array.push(bearboxarray, bearbox)\
+                   \
+    if(upbreak[i]==1)\
+        for z=i+MaxBackbarB to 2\
+            if(bullishEngulfing[z]==1 and ( UpImbalance[z-1] or UpImbalance[z-2]))\
+                boxlowzone  = Drawtopattern?low[z+1] : low[z]\
+                boxhighzone =high[z+1]\
+                diff:=math.abs(boxhighzone-boxlowzone)\
+                if(diff>=MinBoxHeight and diff <=MaxBoxHeight)\
+                    left=Drawtopattern?time[z+1]:time[z]\
+                    found=false\
+                    if (array.size(bullboxarray) > 0)\
+                        for xx = array.size(bullboxarray) - 1 to 0\
+                            box       = array.get(bullboxarray, xx)\
+                            boxleft = box.get_left(box)\
+                            if (left == boxleft )\
+                                found:=true\
+                    if(found==false)\
+                        bullbox     = box.new(left, boxhighzone, time, boxlowzone, border_color=adbullborderboxcolor,xloc=xloc.bar_time ,border_style=line.style_dashed, bgcolor=adbullboxcolor)\
+                        if (array.size(bullboxarray) > adboxcount)\
+                            box.delete(array.shift(bullboxarray))\
+                        array.push(bullboxarray, bullbox)\
+                        \
+                    \
+// plot(dnbreak,title="down break")\
+// plot(upbreak,title="up break")\
+// plot(DownImbalance,title="down imbalance")\
+// plot(UpImbalance,title="up imbalance")\
+\
+}

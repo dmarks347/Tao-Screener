@@ -1,0 +1,315 @@
+//@version=5
+indicator("Tao Indicator - Daily Timeframe", shorttitle="Tao", overlay=true)
+
+// INPUTS ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+// NOTE: This indicator is designed for the 1 Day chart timeframe
+// Visual Settings
+color green_color = input.color(#00ff00, "Green Color (Bullish Alignment)", inline="colors", group="Visual")
+color red_color = input.color(#ff0000, "Red Color (Bearish Alignment)", inline="colors", group="Visual")
+color yellow_color = input.color(#ffff00, "Yellow Color (Mixed)", inline="colors", group="Visual")
+int dot_size = input.int(1, "Dot Size", minval=1, maxval=6, step=1, group="Visual")
+
+// EMA Settings
+int ema_8 = input.int(8, "EMA 8", minval=1, group="EMA Settings", tooltip="Green dots indicate stacked EMAs for bullish trade, Red are stacked for bearish trade, yellow is no trend")
+int ema_21 = input.int(21, "EMA 21", minval=1, group="EMA Settings")
+int ema_34 = input.int(34, "EMA 34", minval=1, group="EMA Settings")
+int ema_55 = input.int(55, "EMA 55", minval=1, group="EMA Settings")
+int ema_89 = input.int(89, "EMA 89", minval=1, group="EMA Settings")
+
+// SMA Settings
+bool show_sma = input.bool(true, "Show SMA Lines", group="SMA Settings")
+int sma_50 = input.int(50, "SMA 50", minval=1, group="SMA Settings")
+int sma_100 = input.int(100, "SMA 100", minval=1, group="SMA Settings")
+int sma_200 = input.int(200, "SMA 200", minval=1, group="SMA Settings")
+
+// Keltner Channel Settings
+bool show_keltner = input.bool(true, "Show Keltner Channels", group="Keltner Channels")
+bool show_21_ema = input.bool(false, "Show 21 EMA (Standalone)", group="Keltner Channels")
+int keltner_ema_length = input.int(21, "Keltner EMA Length", minval=1, group="Keltner Channels")
+int keltner_atr_length = input.int(14, "Keltner ATR Length", minval=1, group="Keltner Channels")
+float keltner_mult_1 = input.float(1.0, "Keltner Multiplier 1", minval=0.1, step=0.1, group="Keltner Channels")
+float keltner_mult_2 = input.float(2.0, "Keltner Multiplier 2", minval=0.1, step=0.1, group="Keltner Channels")
+float keltner_mult_3 = input.float(3.0, "Keltner Multiplier 3", minval=0.1, step=0.1, group="Keltner Channels")
+
+// ADX Background Shading Settings
+bool show_adx_shading = input.bool(true, "Show ADX Background Shading", group="ADX Background", tooltip="Background shading is present when the trend is strong enough to consider a trade")
+int adx_period = input.int(13, "ADX Period", minval=1, group="ADX Background")
+float adx_threshold = input.float(20, "ADX Threshold", minval=1, maxval=100, step=1, group="ADX Background")
+color adx_shade_color = input.color(color.new(color.blue, 90), "ADX Shade Color", group="ADX Background")
+
+// Signal Settings
+bool show_signals = input.bool(true, "Show Entry Signals", group="Entry Signals", tooltip="Green triangles appear when all factors are aligned to consider a trade: stacked EMAs, ADX > 20, Stochastic is over/under the threshold and RSI has been over/under threshold within the last 3 candles, but not over/under threshold for 4 of the last 5 candles")
+color long_signal_color = input.color(color.green, "Long Signal Color", inline="signal_colors", group="Entry Signals")
+color short_signal_color = input.color(color.red, "Short Signal Color", inline="signal_colors", group="Entry Signals")
+
+// }
+
+// CALCULATIONS ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+// Calculate EMAs
+float ema_8_value = ta.ema(close, ema_8)
+float ema_21_value = ta.ema(close, ema_21)
+float ema_34_value = ta.ema(close, ema_34)
+float ema_55_value = ta.ema(close, ema_55)
+float ema_89_value = ta.ema(close, ema_89)
+
+// Calculate SMAs
+float sma_50_value = ta.sma(close, sma_50)
+float sma_100_value = ta.sma(close, sma_100)
+float sma_200_value = ta.sma(close, sma_200)
+
+// Calculate Keltner Channels
+float keltner_ema = ta.ema(close, keltner_ema_length)
+float keltner_atr = ta.atr(keltner_atr_length)
+
+// Keltner Channel 1 (1 ATR)
+float keltner_upper_1 = keltner_ema + (keltner_atr * keltner_mult_1)
+float keltner_lower_1 = keltner_ema - (keltner_atr * keltner_mult_1)
+
+// Keltner Channel 2 (2 ATR)
+float keltner_upper_2 = keltner_ema + (keltner_atr * keltner_mult_2)
+float keltner_lower_2 = keltner_ema - (keltner_atr * keltner_mult_2)
+
+// Keltner Channel 3 (3 ATR)
+float keltner_upper_3 = keltner_ema + (keltner_atr * keltner_mult_3)
+float keltner_lower_3 = keltner_ema - (keltner_atr * keltner_mult_3)
+
+// ADX Calculation for Background Shading
+float adx_tr = ta.tr
+float adx_plus_dm = high - high[1] > low[1] - low ? math.max(high - high[1], 0) : 0
+float adx_minus_dm = low[1] - low > high - high[1] ? math.max(low[1] - low, 0) : 0
+float adx_plus_di = 100 * ta.rma(adx_plus_dm, adx_period) / ta.rma(adx_tr, adx_period)
+float adx_minus_di = 100 * ta.rma(adx_minus_dm, adx_period) / ta.rma(adx_tr, adx_period)
+float adx_dx = 100 * math.abs(adx_plus_di - adx_minus_di) / (adx_plus_di + adx_minus_di)
+float adx_value = ta.rma(adx_dx, adx_period)
+
+// Signal Calculations (Internal Only)
+// Stochastic for signals (K=8, D=3, smooth=3)
+float signal_stoch_k_raw = ta.stoch(close, high, low, 8)
+float signal_stoch_k = ta.sma(signal_stoch_k_raw, 3)
+float signal_stoch_d = ta.sma(signal_stoch_k, 3)
+
+// RSI for signals (length=2)
+float signal_rsi = ta.rsi(close, 2)
+
+// EMA Alignment Conditions
+bool bullish_alignment = ema_8_value >= ema_21_value and ema_21_value >= ema_34_value and ema_34_value >= ema_55_value and ema_55_value >= ema_89_value
+bool bearish_alignment = ema_8_value <= ema_21_value and ema_21_value <= ema_34_value and ema_34_value <= ema_55_value and ema_55_value <= ema_89_value
+
+// Determine dot color
+color dot_color = bullish_alignment ? green_color : bearish_alignment ? red_color : yellow_color
+
+// Signal Logic
+var int last_long_signal_bar = na
+var int last_short_signal_bar = na
+
+// Long Signal Conditions
+// 1. Dots are green (bullish alignment)
+// 2. ADX >= 20
+// 3. Stochastic K <= 40
+// 4. RSI <= 10 within last 3 bars, but was not <= 10 for 4 of last 5 bars
+
+// Check if RSI <= 10 within last 3 bars
+bool rsi_low_recent = signal_rsi <= 10 or signal_rsi[1] <= 10 or signal_rsi[2] <= 10
+
+// Check if RSI was NOT <= 10 for 4+ of last 5 bars (to avoid persistent extreme readings)
+int rsi_low_count = 0
+for i = 0 to 4
+    if signal_rsi[i] <= 10
+        rsi_low_count := rsi_low_count + 1
+
+bool rsi_not_persistent_low = rsi_low_count < 4
+
+bool long_signal_conditions = bullish_alignment and adx_value >= 20 and signal_stoch_k <= 40 and rsi_low_recent and rsi_not_persistent_low
+
+// Ensure signal appears only once (not on consecutive bars)
+bool long_signal = long_signal_conditions and (na(last_long_signal_bar) or bar_index - last_long_signal_bar > 1)
+
+if long_signal
+    last_long_signal_bar := bar_index
+
+// Short Signal Conditions
+// 1. Dots are red (bearish alignment)
+// 2. ADX >= 20
+// 3. Stochastic K >= 60
+// 4. RSI >= 90 within last 3 bars, but was not >= 90 for 4 of last 5 bars
+
+// Check if RSI >= 90 within last 3 bars
+bool rsi_high_recent = signal_rsi >= 90 or signal_rsi[1] >= 90 or signal_rsi[2] >= 90
+
+// Check if RSI was NOT >= 90 for 4+ of last 5 bars (to avoid persistent extreme readings)
+int rsi_high_count = 0
+for i = 0 to 4
+    if signal_rsi[i] >= 90
+        rsi_high_count := rsi_high_count + 1
+
+bool rsi_not_persistent_high = rsi_high_count < 4
+
+bool short_signal_conditions = bearish_alignment and adx_value >= 20 and signal_stoch_k >= 60 and rsi_high_recent and rsi_not_persistent_high
+
+// Ensure signal appears only once (not on consecutive bars)
+bool short_signal = short_signal_conditions and (na(last_short_signal_bar) or bar_index - last_short_signal_bar > 1)
+
+if short_signal
+    last_short_signal_bar := bar_index
+
+// }
+
+// PLOTS ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+// Plot dots fixed at bottom of visible chart window (like TradingView earnings dates)
+plotshape(
+    series=dot_size == 1,
+    style=shape.circle,
+    location=location.bottom,
+    color=dot_color,
+    size=size.tiny,
+    title="Tao Dots (Tiny)"
+)
+
+plotshape(
+    series=dot_size == 2,
+    style=shape.circle,
+    location=location.bottom,
+    color=dot_color,
+    size=size.small,
+    title="Tao Dots (Small)"
+)
+
+plotshape(
+    series=dot_size == 3,
+    style=shape.circle,
+    location=location.bottom,
+    color=dot_color,
+    size=size.normal,
+    title="Tao Dots (Normal)"
+)
+
+plotshape(
+    series=dot_size == 4,
+    style=shape.circle,
+    location=location.bottom,
+    color=dot_color,
+    size=size.large,
+    title="Tao Dots (Large)"
+)
+
+plotshape(
+    series=dot_size == 5,
+    style=shape.circle,
+    location=location.bottom,
+    color=dot_color,
+    size=size.huge,
+    title="Tao Dots (Huge)"
+)
+
+plotshape(
+    series=dot_size == 6,
+    style=shape.circle,
+    location=location.bottom,
+    color=dot_color,
+    size=size.auto,
+    title="Tao Dots (Auto)"
+)
+
+// Plot SMAs
+plot(show_sma ? sma_50_value : na, color=color.yellow, linewidth=2, title="SMA 50", style=plot.style_line)
+plot(show_sma ? sma_100_value : na, color=color.white, linewidth=2, title="SMA 100", style=plot.style_line)
+plot(show_sma ? sma_200_value : na, color=color.red, linewidth=2, title="SMA 200", style=plot.style_line)
+
+// Plot Keltner Channels
+// Keltner Channel 1 (1 ATR) - Blue Dashed
+plot(show_keltner ? keltner_upper_1 : na, color=color.blue, linewidth=1, title="Keltner Upper 1", style=plot.style_circles)
+plot(show_keltner ? keltner_lower_1 : na, color=color.blue, linewidth=1, title="Keltner Lower 1", style=plot.style_circles)
+
+// Keltner Channel 2 (2 ATR) - White Dashed
+plot(show_keltner ? keltner_upper_2 : na, color=color.white, linewidth=1, title="Keltner Upper 2", style=plot.style_circles)
+plot(show_keltner ? keltner_lower_2 : na, color=color.white, linewidth=1, title="Keltner Lower 2", style=plot.style_circles)
+
+// Keltner Channel 3 (3 ATR) - Pink Dashed
+plot(show_keltner ? keltner_upper_3 : na, color=color.fuchsia, linewidth=1, title="Keltner Upper 3", style=plot.style_circles)
+plot(show_keltner ? keltner_lower_3 : na, color=color.fuchsia, linewidth=1, title="Keltner Lower 3", style=plot.style_circles)
+
+// Plot Keltner EMA Base Line (21 EMA) - Green Solid
+plot(show_keltner ? keltner_ema : na, color=color.green, linewidth=2, title="Keltner EMA Base (21)", style=plot.style_line)
+
+// Plot Standalone 21 EMA (independent of Keltner channels)
+plot(show_21_ema ? keltner_ema : na, color=color.green, linewidth=2, title="21 EMA (Standalone)", style=plot.style_line)
+
+// ADX Background Shading
+bgcolor(show_adx_shading and adx_value > adx_threshold ? adx_shade_color : na, title="ADX Background Shading")
+
+// Plot Entry Signals
+plotshape(
+    series=show_signals and long_signal,
+    style=shape.triangleup,
+    location=location.belowbar,
+    color=long_signal_color,
+    size=size.normal,
+    title="Long Signal"
+)
+
+plotshape(
+    series=show_signals and short_signal,
+    style=shape.triangledown,
+    location=location.abovebar,
+    color=short_signal_color,
+    size=size.normal,
+    title="Short Signal"
+)
+
+// }
+
+// TABLE FOR DEBUG INFO ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+if barstate.islast
+    var table info_table = table.new(position.top_right, 2, 12, bgcolor=color.white, border_width=1, frame_width=1, frame_color=color.black)
+    
+    table.cell(info_table, 0, 0, "Tao Indicator", text_color=color.black, bgcolor=color.gray, text_size=size.normal)
+    table.cell(info_table, 1, 0, "Status", text_color=color.black, bgcolor=color.gray, text_size=size.normal)
+    
+    table.cell(info_table, 0, 1, "EMA Alignment", text_color=color.black, bgcolor=color.gray)
+    alignment_text = bullish_alignment ? "BULLISH" : bearish_alignment ? "BEARISH" : "MIXED"
+    alignment_color = bullish_alignment ? green_color : bearish_alignment ? red_color : yellow_color
+    table.cell(info_table, 1, 1, alignment_text, text_color=alignment_color, text_size=size.normal)
+    
+    table.cell(info_table, 0, 2, "Dot Color", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 2, "●", text_color=dot_color, text_size=size.large)
+    
+    table.cell(info_table, 0, 3, "ADX (13)", text_color=color.black, bgcolor=color.gray)
+    adx_text_color = adx_value > adx_threshold ? color.blue : color.gray
+    table.cell(info_table, 1, 3, str.tostring(adx_value, "#.#"), text_color=adx_text_color)
+    
+    table.cell(info_table, 0, 4, "RSI (2)", text_color=color.black, bgcolor=color.gray)
+    rsi_text_color = signal_rsi <= 10 ? color.green : signal_rsi >= 90 ? color.red : color.gray
+    table.cell(info_table, 1, 4, str.tostring(signal_rsi, "#.#"), text_color=rsi_text_color)
+    
+    table.cell(info_table, 0, 5, "Stoch K", text_color=color.black, bgcolor=color.gray)
+    stoch_text_color = signal_stoch_k <= 40 ? color.green : signal_stoch_k >= 60 ? color.red : color.gray
+    table.cell(info_table, 1, 5, str.tostring(signal_stoch_k, "#.#"), text_color=stoch_text_color)
+    
+    table.cell(info_table, 0, 6, "Signal", text_color=color.black, bgcolor=color.gray)
+    signal_text = long_signal ? "LONG ▲" : short_signal ? "SHORT ▼" : "NONE"
+    signal_color = long_signal ? long_signal_color : short_signal ? short_signal_color : color.gray
+    table.cell(info_table, 1, 6, signal_text, text_color=signal_color, text_size=size.normal)
+    
+    // Debug Long Signal Conditions
+    table.cell(info_table, 0, 7, "Long Debug", text_color=color.black, bgcolor=color.gray)
+    long_debug = str.tostring(bullish_alignment ? 1 : 0) + "|" + str.tostring(adx_value >= 20 ? 1 : 0) + "|" + str.tostring(signal_stoch_k <= 40 ? 1 : 0) + "|" + str.tostring(rsi_low_recent ? 1 : 0) + "|" + str.tostring(rsi_not_persistent_low ? 1 : 0)
+    table.cell(info_table, 1, 7, long_debug, text_color=color.black, text_size=size.small)
+    
+    // Debug Short Signal Conditions  
+    table.cell(info_table, 0, 8, "Short Debug", text_color=color.black, bgcolor=color.gray)
+    short_debug = str.tostring(bearish_alignment ? 1 : 0) + "|" + str.tostring(adx_value >= 20 ? 1 : 0) + "|" + str.tostring(signal_stoch_k >= 60 ? 1 : 0) + "|" + str.tostring(rsi_high_recent ? 1 : 0) + "|" + str.tostring(rsi_not_persistent_high ? 1 : 0)
+    table.cell(info_table, 1, 8, short_debug, text_color=color.black, text_size=size.small)
+    
+    // RSI Recent History
+    table.cell(info_table, 0, 9, "RSI History", text_color=color.black, bgcolor=color.gray)
+    rsi_history = str.tostring(signal_rsi, "#") + "|" + str.tostring(signal_rsi[1], "#") + "|" + str.tostring(signal_rsi[2], "#") + "|" + str.tostring(signal_rsi[3], "#") + "|" + str.tostring(signal_rsi[4], "#")
+    table.cell(info_table, 1, 9, rsi_history, text_color=color.black, text_size=size.small)
+    
+    // RSI Count Info
+    table.cell(info_table, 0, 10, "RSI Low Count", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 10, str.tostring(rsi_low_count), text_color=color.black)
+    
+    table.cell(info_table, 0, 11, "RSI High Count", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 11, str.tostring(rsi_high_count), text_color=color.black)
+
+// } 

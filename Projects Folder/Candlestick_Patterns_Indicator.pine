@@ -1,0 +1,246 @@
+//@version=6
+indicator("Candlestick Patterns Indicator", shorttitle="CP", overlay=true)
+
+// =============================================================================
+// INPUT PARAMETERS
+// =============================================================================
+
+// Pattern Detection Settings
+doji_threshold = input.float(10.0, "Doji Body Threshold (%)", minval=1.0, maxval=25.0, step=1.0,
+                             tooltip="Maximum body size as percentage of total range for Doji detection", 
+                             group="Pattern Settings")
+
+star_gap_threshold = input.float(5.0, "Star Gap Threshold (%)", minval=0.0, maxval=25.0, step=1.0,
+                                 tooltip="Minimum gap size for Morning/Evening Star patterns as % of previous candle", 
+                                 group="Pattern Settings")
+
+min_body_size = input.float(30.0, "Minimum Body Size for Star Pattern (%)", minval=10.0, maxval=100.0, step=5.0,
+                            tooltip="Minimum body size for first and third candles in star patterns", 
+                            group="Pattern Settings")
+
+star_middle_body_max = input.float(20.0, "Maximum Middle Candle Body Size (%)", minval=5.0, maxval=50.0, step=5.0,
+                                   tooltip="Maximum body size for middle candle in star patterns (more selective)", 
+                                   group="Pattern Settings")
+
+// Visual Settings
+show_morning_star = input.bool(true, "Show Morning Star", group="Display")
+show_evening_star = input.bool(true, "Show Evening Star", group="Display")
+show_doji = input.bool(true, "Show Doji", group="Display")
+show_labels = input.bool(true, "Show Pattern Labels", group="Display")
+
+marker_size = input.string("Normal", "Marker Size", 
+                           options=["Tiny", "Small", "Normal", "Large", "Huge"],
+                           tooltip="Size of the pattern markers on the chart",
+                           group="Display")
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+// No helper function needed - will use conditional plotshape calls
+
+// Calculate candle body size
+body_size(index) =>
+    math.abs(close[index] - open[index])
+
+// Calculate total candle range
+candle_range(index) =>
+    high[index] - low[index]
+
+// Check if candle is bullish
+is_bullish(index) =>
+    close[index] > open[index]
+
+// Check if candle is bearish
+is_bearish(index) =>
+    close[index] < open[index]
+
+// Calculate body percentage of total range
+body_percentage(index) =>
+    range_value = candle_range(index)
+    range_value > 0 ? (body_size(index) / range_value) * 100 : 0
+
+// =============================================================================
+// PATTERN DETECTION FUNCTIONS
+// =============================================================================
+
+// Doji Detection
+detect_doji() =>
+    current_body_pct = body_percentage(0)
+    current_range = candle_range(0)
+    
+    // Doji criteria: small body relative to total range
+    is_doji = current_body_pct <= doji_threshold and current_range > 0
+    is_doji
+
+// Morning Star Detection (3-candle bullish reversal pattern)
+detect_morning_star() =>
+    // Candle conditions
+    first_bearish = is_bearish(2) and body_percentage(2) >= min_body_size
+    second_small = body_percentage(1) <= star_middle_body_max  // Small middle candle (user defined)
+    third_bullish = is_bullish(0) and body_percentage(0) >= min_body_size
+    
+    // Gap conditions (optional - can be relaxed)
+    gap_down = low[1] < low[2] - (candle_range(2) * star_gap_threshold / 100)
+    gap_up = low[0] > low[1] or close[0] > (open[2] + close[2]) / 2
+    
+    // Pattern confirmation
+    pattern_valid = first_bearish and second_small and third_bullish
+    
+    pattern_valid
+
+// Evening Star Detection (3-candle bearish reversal pattern)  
+detect_evening_star() =>
+    // Candle conditions
+    first_bullish = is_bullish(2) and body_percentage(2) >= min_body_size
+    second_small = body_percentage(1) <= star_middle_body_max  // Small middle candle (user defined)
+    third_bearish = is_bearish(0) and body_percentage(0) >= min_body_size
+    
+    // Gap conditions (optional - can be relaxed)
+    gap_up = high[1] > high[2] + (candle_range(2) * star_gap_threshold / 100)
+    gap_down = high[0] < high[1] or close[0] < (open[2] + close[2]) / 2
+    
+    // Pattern confirmation
+    pattern_valid = first_bullish and second_small and third_bearish
+    
+    pattern_valid
+
+// ATR for label positioning (calculated once for consistency)
+atr_value = ta.atr(14)
+
+// =============================================================================
+// PATTERN DETECTION
+// =============================================================================
+
+// Detect patterns
+doji_detected = detect_doji()
+morning_star_detected = detect_morning_star()
+evening_star_detected = detect_evening_star()
+
+// =============================================================================
+// VISUAL MARKERS
+// =============================================================================
+
+// Morning Star - Green up triangle below candle (multiple plotshape calls for different sizes)
+plotshape(show_morning_star and morning_star_detected and marker_size == "Tiny", 
+          style=shape.triangleup, location=location.belowbar, color=color.green, 
+          size=size.tiny, title="Morning Star")
+plotshape(show_morning_star and morning_star_detected and marker_size == "Small", 
+          style=shape.triangleup, location=location.belowbar, color=color.green, 
+          size=size.small, title="Morning Star")
+plotshape(show_morning_star and morning_star_detected and marker_size == "Normal", 
+          style=shape.triangleup, location=location.belowbar, color=color.green, 
+          size=size.normal, title="Morning Star")
+plotshape(show_morning_star and morning_star_detected and marker_size == "Large", 
+          style=shape.triangleup, location=location.belowbar, color=color.green, 
+          size=size.large, title="Morning Star")
+plotshape(show_morning_star and morning_star_detected and marker_size == "Huge", 
+          style=shape.triangleup, location=location.belowbar, color=color.green, 
+          size=size.huge, title="Morning Star")
+
+if show_labels and show_morning_star and morning_star_detected
+    label.new(bar_index, low - (atr_value * 1.2), 
+              "Morning Star", 
+              color=color.green, 
+              textcolor=color.white, 
+              style=label.style_label_up, 
+              size=size.small)
+
+// Evening Star - Red down triangle above candle (multiple plotshape calls for different sizes)
+plotshape(show_evening_star and evening_star_detected and marker_size == "Tiny", 
+          style=shape.triangledown, location=location.abovebar, color=color.red, 
+          size=size.tiny, title="Evening Star")
+plotshape(show_evening_star and evening_star_detected and marker_size == "Small", 
+          style=shape.triangledown, location=location.abovebar, color=color.red, 
+          size=size.small, title="Evening Star")
+plotshape(show_evening_star and evening_star_detected and marker_size == "Normal", 
+          style=shape.triangledown, location=location.abovebar, color=color.red, 
+          size=size.normal, title="Evening Star")
+plotshape(show_evening_star and evening_star_detected and marker_size == "Large", 
+          style=shape.triangledown, location=location.abovebar, color=color.red, 
+          size=size.large, title="Evening Star")
+plotshape(show_evening_star and evening_star_detected and marker_size == "Huge", 
+          style=shape.triangledown, location=location.abovebar, color=color.red, 
+          size=size.huge, title="Evening Star")
+
+if show_labels and show_evening_star and evening_star_detected
+    label.new(bar_index, high + (atr_value * 1.2), 
+              "Evening Star", 
+              color=color.red, 
+              textcolor=color.white, 
+              style=label.style_label_down, 
+              size=size.small)
+
+// Doji - Gold diamond below candle (multiple plotshape calls for different sizes)
+plotshape(show_doji and doji_detected and marker_size == "Tiny", 
+          style=shape.diamond, location=location.belowbar, color=color.yellow, 
+          size=size.tiny, title="Doji")
+plotshape(show_doji and doji_detected and marker_size == "Small", 
+          style=shape.diamond, location=location.belowbar, color=color.yellow, 
+          size=size.small, title="Doji")
+plotshape(show_doji and doji_detected and marker_size == "Normal", 
+          style=shape.diamond, location=location.belowbar, color=color.yellow, 
+          size=size.normal, title="Doji")
+plotshape(show_doji and doji_detected and marker_size == "Large", 
+          style=shape.diamond, location=location.belowbar, color=color.yellow, 
+          size=size.large, title="Doji")
+plotshape(show_doji and doji_detected and marker_size == "Huge", 
+          style=shape.diamond, location=location.belowbar, color=color.yellow, 
+          size=size.huge, title="Doji")
+
+if show_labels and show_doji and doji_detected
+    label.new(bar_index, low - (atr_value * 0.8), 
+              "Doji", 
+              color=color.yellow, 
+              textcolor=color.black, 
+              style=label.style_label_up, 
+              size=size.tiny)
+
+// =============================================================================
+// BACKGROUND HIGHLIGHTS (OPTIONAL)
+// =============================================================================
+
+// Subtle background highlights for detected patterns
+bgcolor(morning_star_detected ? color.new(color.green, 95) : na, title="Morning Star BG")
+bgcolor(evening_star_detected ? color.new(color.red, 95) : na, title="Evening Star BG")
+bgcolor(doji_detected ? color.new(color.yellow, 97) : na, title="Doji BG")
+
+// =============================================================================
+// ALERTS
+// =============================================================================
+
+// Alert conditions
+if morning_star_detected
+    alert("Morning Star pattern detected at " + str.tostring(close, "#.##"), alert.freq_once_per_bar)
+
+if evening_star_detected
+    alert("Evening Star pattern detected at " + str.tostring(close, "#.##"), alert.freq_once_per_bar)
+
+if doji_detected
+    alert("Doji pattern detected at " + str.tostring(close, "#.##"), alert.freq_once_per_bar)
+
+// =============================================================================
+// PLOT INFORMATION
+// =============================================================================
+
+// Plot invisible line for debugging (can be removed)
+plot(na, title="Patterns")
+
+// Add table with pattern statistics (optional)
+if barstate.islast
+    var table pattern_table = table.new(position.top_left, 2, 4, bgcolor=color.white, border_width=1)
+    
+    table.cell(pattern_table, 0, 0, "Pattern", text_color=color.black, bgcolor=color.gray)
+    table.cell(pattern_table, 1, 0, "Status", text_color=color.black, bgcolor=color.gray)
+    
+    table.cell(pattern_table, 0, 1, "Morning Star", text_color=color.black)
+    table.cell(pattern_table, 1, 1, morning_star_detected ? "✓" : "✗", 
+               text_color=morning_star_detected ? color.green : color.red)
+    
+    table.cell(pattern_table, 0, 2, "Evening Star", text_color=color.black)
+    table.cell(pattern_table, 1, 2, evening_star_detected ? "✓" : "✗", 
+               text_color=evening_star_detected ? color.green : color.red)
+    
+    table.cell(pattern_table, 0, 3, "Doji", text_color=color.black)
+    table.cell(pattern_table, 1, 3, doji_detected ? "✓" : "✗", 
+               text_color=doji_detected ? color.yellow : color.red) 

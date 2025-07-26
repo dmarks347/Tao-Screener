@@ -1,0 +1,137 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2822
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 //@version=5\
+indicator(title='FU Candle Indicator V3.2', shorttitle='FU Candle V3.2', overlay=true)\
+\
+var FU_Filters = "Filters"\
+var FU_Inputs = "FU Settings"\
+var FU_Style = "Entry Lines"\
+\
+// FU Candle Settings\
+FUtColorBull = input.color(defval=color.green, title="Bullish FU Candle Color", group=FU_Inputs)\
+FUtColorBear = input.color(defval=color.red, title="Bearish FU Candle Color", group=FU_Inputs)\
+tf0 = input.timeframe(defval='', title='Chart', tooltip="This setting is to determine on which timeframe the FU candle has to be displayed. It's set to current timeframe by default", group=FU_Inputs)\
+BelowBreakout = input(title='Liq. Grab in Points:', defval=100, tooltip="Strength of the liquidity. This function measures by how many points the wick of the previous candle has been taken out.", group=FU_Inputs)\
+AboveBreakout = input(title='Engulfing in Points:', defval=20, tooltip="Strength of the engulfing. This function measures by how many points the current candle englulfes the open/close of the previous candle. If ATT FU's are enabled it will measure the distance between the body close of the current and previous candle. If ATT is disabled it will measure the distance from the close of the current candle to the wick of the previous candle.", group=FU_Inputs)\
+X_PIP = input(title='Min. Size in Points:', defval=20, tooltip="This setting is to filter out FU candles that are too small Adjust for the asset and timeframe you're using.", group=FU_Inputs)\
+X_PIPBody = input.float(title='Min. Body Size in Points:', defval=100, tooltip="Minimum body size filter for FU candles.", group=FU_Inputs)\
+X_PIPBodyMax = input.float(title='Max. Body Size in Points:', defval=1000, tooltip="Maximum body size filter for FU candles.", group=FU_Inputs)  // New input for max body size\
+closeToClose = input.bool(title='Show ATT FU Candles:', defval=true, tooltip="If enabled it will show so called attempted FU candles too. ATT FU candles are FU candles where the only the body of the previous candle is engulfed but not the wick.", group=FU_Inputs)\
+\
+// Filters\
+check_wick = input.bool(title='Rejection Filter:', defval=false, tooltip="Filter out candles with stronger opposite rejection wick.", group=FU_Filters)\
+enableFractalFilter = input.bool(false, title="Enable Fractal Filter", tooltip="Experimental: Show FU candles taking out fractal high/low.", group=FU_Filters)\
+lookbackFractals = input.int(2, title="Fractal Lookback Period", minval=1, maxval=1000, tooltip="Recency of fractals for the filter.", group=FU_Filters)\
+enableEMAFilter = input.bool(false, title="Enable EMA Filter", tooltip="Experimental: Show FU candles touching EMA with wick, closing above/below.", group=FU_Filters)\
+emaPeriod = input.int(50, title="EMA Period", minval=1, maxval=200, tooltip="EMA period for the filter", group=FU_Filters)\
+\
+// Styling\
+check_Lines = input.bool(title='Show Entry Lines:', defval=false, tooltip="Show 50% retracement/equilibrium of FU candle body.", group=FU_Style)\
+LineColor1 = input.color(defval=color.gray, title="Entry Line Color", inline="Lines", group=FU_Style)\
+LineStrenth = input.int(defval=1, title="Lines Wide", inline="Lines", group=FU_Style)\
+Linelength = input.int(defval=4, title="Lines length", inline="Lines", tooltip="Number of bars to extend entry lines.", group=FU_Style)\
+LineStyle = input.string(defval="Dashed", title="Line Style", options=["Solid", "Dashed", "Dotted"], inline="Lines", group=FU_Style)\
+\
+// Alert settings\
+tf1 = input.timeframe(title="TF1", defval="1", group="Alert Timeframe")\
+tf2 = input.timeframe(title="TF2", defval="2", group="Alert Timeframe")\
+tf3 = input.timeframe(title="TF3", defval="3", group="Alert Timeframe")\
+tf4 = input.timeframe(title="TF4", defval="5", group="Alert Timeframe")\
+tf5 = input.timeframe(title="TF5", defval="15", group="Alert Timeframe")\
+tf6 = input.timeframe(title="TF6", defval="60", group="Alert Timeframe")\
+tf7 = input.timeframe(title="TF7", defval="240", group="Alert Timeframe")\
+tf8 = input.timeframe(title="TF8", defval="D", group="Alert Timeframe")\
+\
+isTF1 = input.bool(false, title="TF1", group="Enable Alerts", inline = "Enable Alerts")\
+isTF2 = input.bool(false, title="TF2", group="Enable Alerts", inline = "Enable Alerts")\
+isTF3 = input.bool(false, title="TF3", group="Enable Alerts", inline = "Enable Alerts")\
+isTF4 = input.bool(false, title="TF4", group="Enable Alerts", inline = "Enable Alerts")\
+isTF5 = input.bool(false, title="TF5", group="Enable Alerts", inline = "Enable Alerts")\
+isTF6 = input.bool(false, title="TF6", group="Enable Alerts", inline = "Enable Alerts")\
+isTF7 = input.bool(false, title="TF7", group="Enable Alerts", inline = "Enable Alerts")\
+isTF8 = input.bool(false, title="TF8", group="Enable Alerts", inline = "Enable Alerts")\
+\
+line_style = LineStyle == "Dashed" ? line.style_dashed : LineStyle == "Dotted" ? line.style_dotted : line.style_solid\
+\
+GetPipSize() =>\
+    syminfo.mintick * (syminfo.type == "forex" or syminfo.type == "crypto" ? 10 : 1)\
+\
+emaValue = ta.ema(close, emaPeriod)\
+\
+upFractal = ta.highestbars(high, lookbackFractals * 2 + 1) == lookbackFractals\
+downFractal = ta.lowestbars(low, lookbackFractals * 2 + 1) == lookbackFractals\
+\
+// Function to check if a fractal was taken out within the last x candles\
+fractalTakenOut(isBullish, currentPrice, x) =>\
+    if isBullish\
+        lowestFractal = ta.lowest(nz(low[downFractal ? 0 : 1]), x)\
+        currentPrice < lowestFractal\
+    else\
+        highestFractal = ta.highest(nz(high[upFractal ? 0 : 1]), x)\
+        currentPrice > highestFractal\
+\
+signals(tfX, isTFX) =>\
+    htfHigh = request.security(syminfo.tickerid, tfX, high, lookahead=barmerge.lookahead_on)\
+    htfLow = request.security(syminfo.tickerid, tfX, low, lookahead=barmerge.lookahead_on)\
+    htfClose = request.security(syminfo.tickerid, tfX, close, lookahead=barmerge.lookahead_on)\
+    htfOpen = request.security(syminfo.tickerid, tfX, open, lookahead=barmerge.lookahead_on)\
+\
+    bodySize = math.abs(htfClose - htfOpen)\
+    comparePriceLow = closeToClose ? math.min(htfOpen[1], htfClose[1]) : htfLow[1]\
+    comparePriceHigh = closeToClose ? math.max(htfOpen[1], htfClose[1]) : htfHigh[1]\
+\
+    check_wickBuy = not check_wick or (htfOpen - htfLow > htfHigh - htfClose and htfClose > htfOpen)\
+    check_wickSell = not check_wick or (htfClose - htfLow < htfHigh - htfOpen and htfClose < htfOpen)\
+\
+    buyCondition = htfLow < htfLow[1] - (BelowBreakout * GetPipSize()) and\
+                   check_wickBuy and\
+                   htfClose > comparePriceHigh + (AboveBreakout * GetPipSize()) and\
+                   (htfHigh - htfLow >= X_PIP * GetPipSize()) and\
+                   bodySize > X_PIPBody * GetPipSize() and\
+                   bodySize <= X_PIPBodyMax * GetPipSize() and\
+                   (not enableFractalFilter or fractalTakenOut(true, htfLow, lookbackFractals))\
+\
+    sellCondition = htfHigh > htfHigh[1] + (BelowBreakout * GetPipSize()) and \
+                      check_wickSell and\
+                      htfClose < comparePriceLow - (AboveBreakout * GetPipSize()) and\
+                      (htfHigh - htfLow >= X_PIP * GetPipSize()) and\
+                      bodySize > X_PIPBody * GetPipSize() and\
+                      bodySize <= X_PIPBodyMax * GetPipSize() and\
+                      (not enableFractalFilter or fractalTakenOut(false, htfHigh, lookbackFractals))\
+\
+    if buyCondition and isTFX\
+        alert('Long FU Candle in TimeFrame ' + str.tostring(tfX), alert.freq_once_per_bar_close)\
+\
+    if sellCondition and isTFX\
+        alert('Short FU Candle in TimeFrame ' + str.tostring(tfX), alert.freq_once_per_bar_close)\
+\
+    [buyCondition, sellCondition, htfHigh, htfLow, htfOpen, htfClose]\
+\
+[buyCondition, sellCondition, htfHigh0, htfLow0, htfOpen0, htfClose0] = signals(tf0, true)\
+\
+buySignal = buyCondition and (not enableEMAFilter or close > emaValue)\
+sellSignal = sellCondition and (not enableEMAFilter or close < emaValue)\
+\
+if buySignal and check_Lines\
+    line.new(x1=bar_index, y1=(htfOpen0 + htfClose0) / 2, x2=bar_index + Linelength, y2=(htfOpen0 + htfClose0) / 2, color=LineColor1, style=line_style, width=LineStrenth)\
+\
+if sellSignal and check_Lines\
+    line.new(x1=bar_index, y1=(htfOpen0 + htfClose0) / 2, x2=bar_index + Linelength, y2=(htfOpen0 + htfClose0) / 2, color=LineColor1, style=line_style, width=LineStrenth)\
+\
+barcolor(buySignal ? FUtColorBull : sellSignal ? FUtColorBear : na)\
+\
+plot(enableEMAFilter ? emaValue : na, "EMA", color=color.blue, linewidth=1)\
+\
+signals(tf1, isTF1)\
+signals(tf2, isTF2)\
+signals(tf3, isTF3)\
+signals(tf4, isTF4)\
+signals(tf5, isTF5)\
+signals(tf6, isTF6)\
+signals(tf7, isTF7)\
+signals(tf8, isTF8)}

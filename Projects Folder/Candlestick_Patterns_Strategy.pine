@@ -1,0 +1,478 @@
+//@version=6
+strategy("Candlestick Patterns Strategy", shorttitle="CP Strategy", overlay=true,
+         default_qty_type=strategy.fixed, 
+         default_qty_value=1,
+         currency=currency.USD)
+
+// =============================================================================
+// INPUT PARAMETERS
+// =============================================================================
+
+// Pattern Detection Settings
+doji_threshold = input.float(10.0, "Doji Body Threshold (%)", minval=1.0, maxval=25.0, step=1.0,
+                             tooltip="Maximum body size as percentage of total range for Doji detection", 
+                             group="Pattern Settings")
+
+star_gap_threshold = input.float(5.0, "Star Gap Threshold (%)", minval=0.0, maxval=25.0, step=1.0,
+                                 tooltip="Minimum gap size for Morning/Evening Star patterns as % of previous candle", 
+                                 group="Pattern Settings")
+
+min_body_size = input.float(30.0, "Minimum Body Size for Star Pattern (%)", minval=10.0, maxval=100.0, step=5.0,
+                            tooltip="Minimum body size for first and third candles in star patterns", 
+                            group="Pattern Settings")
+
+star_middle_body_max = input.float(20.0, "Maximum Middle Candle Body Size (%)", minval=5.0, maxval=50.0, step=5.0,
+                                   tooltip="Maximum body size for middle candle in star patterns (more selective)", 
+                                   group="Pattern Settings")
+
+// Strategy Settings
+trade_quantity = input.int(1, "Trade Quantity", minval=1, maxval=1000, step=1,
+                           tooltip="Number of contracts/shares per trade", 
+                           group="Strategy Settings")
+
+risk_reward_ratio = input.float(2.0, "Risk/Reward Ratio", minval=0.5, maxval=5.0, step=0.5,
+                                tooltip="Take profit ratio (2.0 = 2:1 reward to risk)", 
+                                group="Strategy Settings")
+
+max_trades_per_day = input.int(10, "Maximum Trades Per Day", minval=1, maxval=50, step=1,
+                               tooltip="Maximum number of trades allowed per day", 
+                               group="Strategy Settings")
+
+// Time Control Settings
+trade_start_hour = input.int(7, "Trading Start Hour (ET)", minval=4, maxval=16, step=1,
+                             tooltip="Hour to start taking trades (Eastern Time)", 
+                             group="Time Controls")
+
+trade_start_minute = input.int(0, "Trading Start Minute", 
+                               options=[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55],
+                               tooltip="Minute to start taking trades", 
+                               group="Time Controls")
+
+trade_end_hour = input.int(14, "Trading End Hour (ET)", minval=10, maxval=16, step=1,
+                           tooltip="Hour to stop taking new trades (Eastern Time)", 
+                           group="Time Controls")
+
+trade_end_minute = input.int(0, "Trading End Minute", 
+                             options=[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55],
+                             tooltip="Minute to stop taking new trades", 
+                             group="Time Controls")
+
+force_close_hour = input.int(15, "Force Close Hour (ET)", minval=14, maxval=17, step=1,
+                             tooltip="Hour to force close all positions (Eastern Time)", 
+                             group="Time Controls")
+
+force_close_minute = input.int(50, "Force Close Minute", 
+                               options=[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55],
+                               tooltip="Minute to force close all positions", 
+                               group="Time Controls")
+
+// ADX Confluence Filter
+use_adx_filter = input.bool(false, "Use ADX Filter", 
+                            tooltip="Enable ADX filter for trend strength confluence", 
+                            group="ADX Filter")
+
+adx_length = input.int(14, "ADX Length", minval=1, maxval=50, step=1,
+                       tooltip="Number of periods for ADX calculation", 
+                       group="ADX Filter")
+
+adx_threshold = input.float(20.0, "ADX Threshold", minval=5.0, maxval=50.0, step=1.0,
+                            tooltip="Minimum ADX value required for trade entry", 
+                            group="ADX Filter")
+
+// Visual Settings
+show_patterns = input.bool(true, "Show Pattern Markers", group="Display")
+show_labels = input.bool(true, "Show Pattern Labels", group="Display")
+show_trade_levels = input.bool(true, "Show SL/TP Levels", group="Display")
+
+marker_size = input.string("Normal", "Marker Size", 
+                           options=["Tiny", "Small", "Normal", "Large", "Huge"],
+                           tooltip="Size of the pattern markers on the chart",
+                           group="Display")
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+// No helper function needed - will use conditional plotshape calls
+
+// Calculate candle body size
+body_size(index) =>
+    math.abs(close[index] - open[index])
+
+// Calculate total candle range
+candle_range(index) =>
+    high[index] - low[index]
+
+// Check if candle is bullish
+is_bullish(index) =>
+    close[index] > open[index]
+
+// Check if candle is bearish
+is_bearish(index) =>
+    close[index] < open[index]
+
+// Calculate body percentage of total range
+body_percentage(index) =>
+    range_value = candle_range(index)
+    range_value > 0 ? (body_size(index) / range_value) * 100 : 0
+
+// =============================================================================
+// PATTERN DETECTION FUNCTIONS
+// =============================================================================
+
+// Doji Detection
+detect_doji() =>
+    current_body_pct = body_percentage(0)
+    current_range = candle_range(0)
+    
+    // Doji criteria: small body relative to total range
+    is_doji = current_body_pct <= doji_threshold and current_range > 0
+    is_doji
+
+// Morning Star Detection (3-candle bullish reversal pattern)
+detect_morning_star() =>
+    // Candle conditions
+    first_bearish = is_bearish(2) and body_percentage(2) >= min_body_size
+    second_small = body_percentage(1) <= star_middle_body_max  // Small middle candle (user defined)
+    third_bullish = is_bullish(0) and body_percentage(0) >= min_body_size
+    
+    // Gap conditions (optional - can be relaxed)
+    gap_down = low[1] < low[2] - (candle_range(2) * star_gap_threshold / 100)
+    gap_up = low[0] > low[1] or close[0] > (open[2] + close[2]) / 2
+    
+    // Pattern confirmation
+    pattern_valid = first_bearish and second_small and third_bullish
+    
+    pattern_valid
+
+// Evening Star Detection (3-candle bearish reversal pattern)  
+detect_evening_star() =>
+    // Candle conditions
+    first_bullish = is_bullish(2) and body_percentage(2) >= min_body_size
+    second_small = body_percentage(1) <= star_middle_body_max  // Small middle candle (user defined)
+    third_bearish = is_bearish(0) and body_percentage(0) >= min_body_size
+    
+    // Gap conditions (optional - can be relaxed)
+    gap_up = high[1] > high[2] + (candle_range(2) * star_gap_threshold / 100)
+    gap_down = high[0] < high[1] or close[0] < (open[2] + close[2]) / 2
+    
+    // Pattern confirmation
+    pattern_valid = first_bullish and second_small and third_bearish
+    
+    pattern_valid
+
+// ATR for label positioning (calculated once for consistency)
+atr_value = ta.atr(14)
+
+// ADX calculation for trend strength filter
+[diPlus, diMinus, adx_value] = ta.dmi(adx_length, adx_length)
+
+// =============================================================================
+// TIME CONTROL FUNCTIONS
+// =============================================================================
+
+// Get current time in Eastern Time
+get_current_hour() => hour(time, "America/New_York")
+get_current_minute() => minute(time, "America/New_York")
+
+// Check if it's a trading day (Monday to Friday)
+is_trading_day() =>
+    dayofweek != dayofweek.saturday and dayofweek != dayofweek.sunday
+
+// Check if current time is within trading window
+is_within_trading_hours() =>
+    if not is_trading_day()
+        false
+    else
+        current_hour = get_current_hour()
+        current_minute = get_current_minute()
+        
+        // Convert times to minutes for easier comparison
+        current_time_minutes = current_hour * 60 + current_minute
+        start_time_minutes = trade_start_hour * 60 + trade_start_minute
+        end_time_minutes = trade_end_hour * 60 + trade_end_minute
+        
+        current_time_minutes >= start_time_minutes and current_time_minutes <= end_time_minutes
+
+// Check if it's time to force close
+is_force_close_time() =>
+    if not is_trading_day()
+        false
+    else
+        current_hour = get_current_hour()
+        current_minute = get_current_minute()
+        
+        // Force close at specified time or any time after
+        (current_hour == force_close_hour and current_minute >= force_close_minute) or
+        (current_hour > force_close_hour)
+
+// ADX filter check
+adx_filter_passed() =>
+    if use_adx_filter
+        adx_value >= adx_threshold
+    else
+        true  // If ADX filter is disabled, always pass
+
+// =============================================================================
+// PATTERN DETECTION
+// =============================================================================
+
+// Detect patterns
+doji_detected = detect_doji()
+morning_star_detected = detect_morning_star()
+evening_star_detected = detect_evening_star()
+
+// =============================================================================
+// STRATEGY LOGIC
+// =============================================================================
+
+// Daily trade counter
+var int trades_today = 0
+
+// Reset daily counter
+if ta.change(time("D")) != 0
+    trades_today := 0
+
+// Calculate stop loss and take profit levels
+morning_star_sl = morning_star_detected ? math.min(low[1], low[2]) : na
+morning_star_tp = morning_star_detected ? close + (close - morning_star_sl) * risk_reward_ratio : na
+
+evening_star_sl = evening_star_detected ? math.max(high[1], high[2]) : na  
+evening_star_tp = evening_star_detected ? close - (evening_star_sl - close) * risk_reward_ratio : na
+
+// Entry conditions
+can_trade = trades_today < max_trades_per_day and 
+            strategy.position_size == 0 and 
+            is_within_trading_hours() and
+            adx_filter_passed()
+
+// Long Entry - Morning Star
+if morning_star_detected and can_trade
+    strategy.entry("Long", strategy.long, qty=trade_quantity)
+    strategy.exit("Long Exit", "Long", 
+                  stop=morning_star_sl, 
+                  limit=morning_star_tp)
+    trades_today := trades_today + 1
+    
+    if show_labels
+        label.new(bar_index, low - (atr_value * 1.2), 
+                  "LONG\nSL: " + str.tostring(morning_star_sl, "#.##") + 
+                  "\nTP: " + str.tostring(morning_star_tp, "#.##"), 
+                  color=color.green, 
+                  textcolor=color.white, 
+                  style=label.style_label_up, 
+                  size=size.normal)
+
+// Short Entry - Evening Star  
+if evening_star_detected and can_trade
+    strategy.entry("Short", strategy.short, qty=trade_quantity)
+    strategy.exit("Short Exit", "Short", 
+                  stop=evening_star_sl, 
+                  limit=evening_star_tp)
+    trades_today := trades_today + 1
+    
+    if show_labels
+        label.new(bar_index, high + (atr_value * 1.2), 
+                  "SHORT\nSL: " + str.tostring(evening_star_sl, "#.##") + 
+                  "\nTP: " + str.tostring(evening_star_tp, "#.##"), 
+                  color=color.red, 
+                  textcolor=color.white, 
+                  style=label.style_label_down, 
+                  size=size.normal)
+
+// =============================================================================
+// FORCE CLOSE LOGIC
+// =============================================================================
+
+// Force close all positions at specified time using market orders
+if is_force_close_time() and strategy.position_size != 0
+    strategy.close_all("Force Close")
+    
+    if show_labels
+        label.new(bar_index, close, 
+                  "FORCE CLOSE\n" + 
+                  str.tostring(force_close_hour) + ":" + 
+                  str.format("{0,number,00}", force_close_minute) + " ET", 
+                  color=color.orange, 
+                  textcolor=color.white, 
+                  style=label.style_label_left, 
+                  size=size.normal)
+
+// =============================================================================
+// VISUAL MARKERS (OPTIONAL)
+// =============================================================================
+
+// Morning Star - Green up triangle below candle (multiple plotshape calls for different sizes)
+plotshape(show_patterns and morning_star_detected and marker_size == "Tiny", 
+          style=shape.triangleup, location=location.belowbar, color=color.green, 
+          size=size.tiny, title="Morning Star")
+plotshape(show_patterns and morning_star_detected and marker_size == "Small", 
+          style=shape.triangleup, location=location.belowbar, color=color.green, 
+          size=size.small, title="Morning Star")
+plotshape(show_patterns and morning_star_detected and marker_size == "Normal", 
+          style=shape.triangleup, location=location.belowbar, color=color.green, 
+          size=size.normal, title="Morning Star")
+plotshape(show_patterns and morning_star_detected and marker_size == "Large", 
+          style=shape.triangleup, location=location.belowbar, color=color.green, 
+          size=size.large, title="Morning Star")
+plotshape(show_patterns and morning_star_detected and marker_size == "Huge", 
+          style=shape.triangleup, location=location.belowbar, color=color.green, 
+          size=size.huge, title="Morning Star")
+
+// Evening Star - Red down triangle above candle (multiple plotshape calls for different sizes)
+plotshape(show_patterns and evening_star_detected and marker_size == "Tiny", 
+          style=shape.triangledown, location=location.abovebar, color=color.red, 
+          size=size.tiny, title="Evening Star")
+plotshape(show_patterns and evening_star_detected and marker_size == "Small", 
+          style=shape.triangledown, location=location.abovebar, color=color.red, 
+          size=size.small, title="Evening Star")
+plotshape(show_patterns and evening_star_detected and marker_size == "Normal", 
+          style=shape.triangledown, location=location.abovebar, color=color.red, 
+          size=size.normal, title="Evening Star")
+plotshape(show_patterns and evening_star_detected and marker_size == "Large", 
+          style=shape.triangledown, location=location.abovebar, color=color.red, 
+          size=size.large, title="Evening Star")
+plotshape(show_patterns and evening_star_detected and marker_size == "Huge", 
+          style=shape.triangledown, location=location.abovebar, color=color.red, 
+          size=size.huge, title="Evening Star")
+
+// Doji - Gold diamond below candle (for reference, not traded)
+plotshape(show_patterns and doji_detected and marker_size == "Tiny", 
+          style=shape.diamond, location=location.belowbar, color=color.yellow, 
+          size=size.tiny, title="Doji")
+plotshape(show_patterns and doji_detected and marker_size == "Small", 
+          style=shape.diamond, location=location.belowbar, color=color.yellow, 
+          size=size.small, title="Doji")
+plotshape(show_patterns and doji_detected and marker_size == "Normal", 
+          style=shape.diamond, location=location.belowbar, color=color.yellow, 
+          size=size.normal, title="Doji")
+plotshape(show_patterns and doji_detected and marker_size == "Large", 
+          style=shape.diamond, location=location.belowbar, color=color.yellow, 
+          size=size.large, title="Doji")
+plotshape(show_patterns and doji_detected and marker_size == "Huge", 
+          style=shape.diamond, location=location.belowbar, color=color.yellow, 
+          size=size.huge, title="Doji")
+
+// =============================================================================
+// TRADE LEVEL VISUALIZATION
+// =============================================================================
+
+// Plot stop loss and take profit levels for active trades
+var line sl_line = na
+var line tp_line = na
+
+// Update lines for long positions
+if strategy.position_size > 0 and morning_star_detected[1]
+    if not na(sl_line)
+        line.delete(sl_line)
+    if not na(tp_line)
+        line.delete(tp_line)
+    
+    if show_trade_levels
+        sl_line := line.new(bar_index-1, morning_star_sl[1], bar_index+10, morning_star_sl[1], 
+                           color=color.red, style=line.style_dashed, width=2)
+        tp_line := line.new(bar_index-1, morning_star_tp[1], bar_index+10, morning_star_tp[1], 
+                           color=color.green, style=line.style_dashed, width=2)
+
+// Update lines for short positions  
+if strategy.position_size < 0 and evening_star_detected[1]
+    if not na(sl_line)
+        line.delete(sl_line)
+    if not na(tp_line)
+        line.delete(tp_line)
+        
+    if show_trade_levels
+        sl_line := line.new(bar_index-1, evening_star_sl[1], bar_index+10, evening_star_sl[1], 
+                           color=color.red, style=line.style_dashed, width=2)
+        tp_line := line.new(bar_index-1, evening_star_tp[1], bar_index+10, evening_star_tp[1], 
+                           color=color.green, style=line.style_dashed, width=2)
+
+// Clean up lines when position closes
+if strategy.position_size == 0 and (not na(sl_line) or not na(tp_line))
+    if not na(sl_line)
+        line.delete(sl_line)
+        sl_line := na
+    if not na(tp_line)
+        line.delete(tp_line)
+        tp_line := na
+
+// =============================================================================
+// INFORMATION TABLE
+// =============================================================================
+
+if barstate.islast
+    var table info_table = table.new(position.top_right, 2, 13, bgcolor=color.white, border_width=1)
+    
+    table.cell(info_table, 0, 0, "Strategy Info", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 0, "Status", text_color=color.black, bgcolor=color.gray)
+    
+    // Current time and trading status
+    table.cell(info_table, 0, 1, "Current Time ET", text_color=color.black)
+    current_time_str = str.format("{0,number,00}:{1,number,00}", get_current_hour(), get_current_minute())
+    table.cell(info_table, 1, 1, current_time_str, text_color=color.black)
+    
+    table.cell(info_table, 0, 2, "Trading Status", text_color=color.black)
+    trading_status = is_within_trading_hours() ? "ACTIVE" : 
+                     is_force_close_time() ? "CLOSED" :
+                     is_trading_day() ? "OUTSIDE HOURS" : "WEEKEND"
+    status_color = is_within_trading_hours() ? color.green : 
+                   is_force_close_time() ? color.red : color.orange
+    table.cell(info_table, 1, 2, trading_status, text_color=status_color)
+    
+    table.cell(info_table, 0, 3, "Position", text_color=color.black)
+    position_text = strategy.position_size > 0 ? "LONG (" + str.tostring(strategy.position_size) + ")" : 
+                    strategy.position_size < 0 ? "SHORT (" + str.tostring(math.abs(strategy.position_size)) + ")" : "NONE"
+    table.cell(info_table, 1, 3, position_text, text_color=color.black)
+    
+    table.cell(info_table, 0, 4, "Trades Today", text_color=color.black)
+    table.cell(info_table, 1, 4, str.tostring(trades_today) + "/" + str.tostring(max_trades_per_day), text_color=color.black)
+    
+    table.cell(info_table, 0, 5, "Risk/Reward", text_color=color.black)
+    table.cell(info_table, 1, 5, "1:" + str.tostring(risk_reward_ratio), text_color=color.black)
+    
+    table.cell(info_table, 0, 6, "Trading Hours", text_color=color.black)
+    trading_hours = str.format("{0,number,00}:{1,number,00} - {2,number,00}:{3,number,00}", 
+                               trade_start_hour, trade_start_minute, trade_end_hour, trade_end_minute)
+    table.cell(info_table, 1, 6, trading_hours, text_color=color.black)
+    
+    // ADX Filter Information
+    table.cell(info_table, 0, 7, "ADX Filter", text_color=color.black)
+    adx_status = use_adx_filter ? (adx_filter_passed() ? "PASSED" : "FAILED") : "OFF"
+    adx_color = use_adx_filter ? (adx_filter_passed() ? color.green : color.red) : color.gray
+    table.cell(info_table, 1, 7, adx_status, text_color=adx_color)
+    
+    table.cell(info_table, 0, 8, "ADX Value", text_color=color.black)
+    table.cell(info_table, 1, 8, str.tostring(adx_value, "#.##"), text_color=color.black)
+    
+    table.cell(info_table, 0, 9, "Morning Star", text_color=color.black)
+    table.cell(info_table, 1, 9, morning_star_detected ? "✓" : "✗", 
+               text_color=morning_star_detected ? color.green : color.red)
+    
+    table.cell(info_table, 0, 10, "Evening Star", text_color=color.black)
+    table.cell(info_table, 1, 10, evening_star_detected ? "✓" : "✗", 
+               text_color=evening_star_detected ? color.green : color.red)
+    
+    table.cell(info_table, 0, 11, "Net Profit", text_color=color.black)
+    table.cell(info_table, 1, 11, str.tostring(strategy.netprofit, "#.##"), 
+               text_color=strategy.netprofit >= 0 ? color.green : color.red)
+    
+    table.cell(info_table, 0, 12, "Win Rate", text_color=color.black)
+    win_rate = strategy.closedtrades > 0 ? (strategy.wintrades / strategy.closedtrades) * 100 : 0
+    table.cell(info_table, 1, 12, str.tostring(win_rate, "#.#") + "%", text_color=color.black)
+
+// =============================================================================
+// ALERTS
+// =============================================================================
+
+// Trade entry alerts
+if morning_star_detected and can_trade
+    adx_info = use_adx_filter ? " | ADX: " + str.tostring(adx_value, "#.##") : ""
+    alert("LONG Entry: Morning Star pattern detected at " + str.tostring(close, "#.##") + 
+          " | SL: " + str.tostring(morning_star_sl, "#.##") + 
+          " | TP: " + str.tostring(morning_star_tp, "#.##") + adx_info, alert.freq_once_per_bar)
+
+if evening_star_detected and can_trade
+    adx_info = use_adx_filter ? " | ADX: " + str.tostring(adx_value, "#.##") : ""
+    alert("SHORT Entry: Evening Star pattern detected at " + str.tostring(close, "#.##") + 
+          " | SL: " + str.tostring(evening_star_sl, "#.##") + 
+          " | TP: " + str.tostring(evening_star_tp, "#.##") + adx_info, alert.freq_once_per_bar) 

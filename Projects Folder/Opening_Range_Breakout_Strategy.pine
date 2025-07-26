@@ -1,0 +1,417 @@
+//@version=5
+strategy("Opening Range Breakout - Multi-Timeframe", shorttitle="ORB-MTF", overlay=true, max_lines_count=500, max_labels_count=500, max_boxes_count=10)
+
+// =============================================================================
+// USER INPUTS
+// =============================================================================
+
+// Opening Range Settings
+or_start_time = input.string("09:30", "Opening Range Start Time (ET)", 
+                            options=["09:00", "09:15", "09:30", "09:45"], 
+                            tooltip="Start time for 15-minute opening range", group="Opening Range")
+or_duration = input.int(15, "Opening Range Duration (Minutes)", minval=5, maxval=30, step=5, 
+                       tooltip="Duration of opening range in minutes", group="Opening Range")
+
+// Criteria Settings
+max_wait_time = input.int(60, "Max Wait Time for Criteria 2 (Minutes)", minval=15, maxval=90, step=5,
+                         tooltip="Maximum time to wait for retest after breakout", group="Entry Criteria")
+max_trades_per_day = input.int(3, "Maximum Trades Per Day", minval=1, maxval=5, step=1, group="Entry Criteria")
+max_tp_multiple = input.float(4.0, "Maximum TP Multiple", minval=2.0, maxval=10.0, step=0.5,
+                             tooltip="Maximum take profit as multiple of stop loss distance", group="Entry Criteria")
+
+// Trade Management
+close_trades_eod = input.bool(true, "Close All Trades at End of Day", group="Trade Management")
+eod_close_time = input.string("15:50", "End of Day Close Time (ET)", 
+                             options=["15:30", "15:45", "15:50", "15:55", "16:00"], group="Trade Management")
+
+// Visualization
+show_or_box = input.bool(true, "Show Opening Range Box", group="Visualization")
+show_levels = input.bool(true, "Show High/Low Lines", group="Visualization")
+show_tp_sl_lines = input.bool(true, "Show TP/SL Lines", group="Visualization")
+
+// =============================================================================
+// VARIABLES AND ARRAYS
+// =============================================================================
+
+// Opening Range Variables
+var float or_high = na
+var float or_low = na
+var int or_start_bar = na
+var int or_end_bar = na
+var bool or_established = false
+var box or_box = na
+var line or_high_line = na
+var line or_low_line = na
+
+// Multi-timeframe Variables
+var bool criteria_1_long = false
+var bool criteria_1_short = false
+var int criteria_1_time = na
+var float criteria_1_price = na
+var bool gap_detected = false
+var bool trading_disabled = false
+
+// Tracking Variables since Criteria 1
+var float highest_since_c1 = na
+var float lowest_since_c1 = na
+var int touches_count = 0
+var bool criteria_2_met = false
+var string pending_direction = na
+var bool moved_away_from_level = false
+
+// Trade Management
+var int trades_today = 0
+var bool long_signaled = false
+var bool short_signaled = false
+var float entry_price = na
+var float stop_loss = na
+var float take_profit = na
+var line[] sl_lines = array.new<line>()
+var line[] tp_lines = array.new<line>()
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+// Convert time string to minutes since midnight
+time_to_minutes(time_str) =>
+    hour_str = str.substring(time_str, 0, 2)
+    minute_str = str.substring(time_str, 3, 5)
+    hour_val = str.tonumber(hour_str)
+    minute_val = str.tonumber(minute_str)
+    hour_val * 60 + minute_val
+
+// Check if current time is within specified range (New York time)
+is_in_time_range(start_time_str, end_time_str) =>
+    current_hour = hour(time, "America/New_York")
+    current_minute = minute(time, "America/New_York")
+    current_minutes = current_hour * 60 + current_minute
+    
+    start_minutes = time_to_minutes(start_time_str)
+    end_minutes = time_to_minutes(end_time_str)
+    
+    if start_minutes <= end_minutes
+        current_minutes >= start_minutes and current_minutes <= end_minutes
+    else
+        current_minutes >= start_minutes or current_minutes <= end_minutes
+
+// Get 5-minute data
+get_5min_data() =>
+    request.security(syminfo.tickerid, "5", [open, high, low, close, volume], lookahead=barmerge.lookahead_off)
+
+// Check for bullish retest of level (price touches level from above, bullish candle)
+is_bullish_retest(level) =>
+    low <= level and close >= level and close > open
+
+// Check for bearish retest of level (price touches level from below, bearish candle)
+is_bearish_retest(level) =>
+    high >= level and close <= level and close < open
+
+// Clear all TP/SL lines
+clear_tp_sl_lines() =>
+    if array.size(sl_lines) > 0
+        for i = 0 to array.size(sl_lines) - 1
+            sl_line = array.get(sl_lines, i)
+            if not na(sl_line)
+                line.delete(sl_line)
+        array.clear(sl_lines)
+    
+    if array.size(tp_lines) > 0
+        for i = 0 to array.size(tp_lines) - 1
+            tp_line = array.get(tp_lines, i)
+            if not na(tp_line)
+                line.delete(tp_line)
+        array.clear(tp_lines)
+
+// =============================================================================
+// TIME CHECKS
+// =============================================================================
+
+// Calculate OR end time
+or_end_minutes = time_to_minutes(or_start_time) + or_duration
+or_end_hour = math.floor(or_end_minutes / 60)
+or_end_minute = or_end_minutes % 60
+or_end_time = str.format("{0,number,00}:{1,number,00}", or_end_hour, or_end_minute)
+
+// Time range checks
+is_or_period = is_in_time_range(or_start_time, or_end_time)
+is_eod_close = close_trades_eod and is_in_time_range(eod_close_time, "23:59")
+
+// New trading day detection
+is_new_day = ta.change(dayofweek) != 0 or (hour(time, "America/New_York") == 9 and minute(time, "America/New_York") == 30)
+
+// =============================================================================
+// MAIN LOGIC
+// =============================================================================
+
+if barstate.isconfirmed
+    // Reset daily variables
+    if is_new_day
+        or_high := na
+        or_low := na
+        or_established := false
+        criteria_1_long := false
+        criteria_1_short := false
+        criteria_1_time := na
+        gap_detected := false
+        trading_disabled := false
+        trades_today := 0
+        criteria_2_met := false
+        pending_direction := na
+        touches_count := 0
+        highest_since_c1 := na
+        lowest_since_c1 := na
+        moved_away_from_level := false
+        
+        // Clear visual elements
+        if not na(or_box)
+            box.delete(or_box)
+            or_box := na
+        if not na(or_high_line)
+            line.delete(or_high_line)
+            or_high_line := na
+        if not na(or_low_line)
+            line.delete(or_low_line)
+            or_low_line := na
+        
+        // Clear all TP/SL lines for new day
+        clear_tp_sl_lines()
+    
+    // Establish Opening Range
+    if is_or_period and not or_established
+        if na(or_high) or na(or_low)
+            or_high := high
+            or_low := low
+            or_start_bar := bar_index
+        else
+            or_high := math.max(or_high, high)
+            or_low := math.min(or_low, low)
+    
+    // Complete Opening Range
+    if not is_or_period and not or_established and not na(or_high) and not na(or_low)
+        or_established := true
+        or_end_bar := bar_index
+        
+        // Create visualizations
+        if show_or_box and not na(or_box)
+            box.delete(or_box)
+        if show_or_box
+            or_box := box.new(or_start_bar, or_high, or_end_bar, or_low, 
+                             bgcolor=color.new(color.blue, 90), border_color=color.blue, border_width=2)
+        
+        if show_levels
+            if not na(or_high_line)
+                line.delete(or_high_line)
+            if not na(or_low_line)
+                line.delete(or_low_line)
+            or_high_line := line.new(or_end_bar, or_high, or_end_bar + 100, or_high, 
+                                    color=color.red, width=2, style=line.style_solid, extend=extend.right)
+            or_low_line := line.new(or_end_bar, or_low, or_end_bar + 100, or_low, 
+                                   color=color.green, width=2, style=line.style_solid, extend=extend.right)
+        
+        // Check for gaps
+        if open > or_high or open < or_low
+            gap_detected := true
+            trading_disabled := true
+            label.new(bar_index, high, "GAP DETECTED\nTrading Disabled", 
+                     color=color.red, textcolor=color.white, size=size.normal)
+    
+    // Get 5-minute data for criteria 1
+    [open_5m, high_5m, low_5m, close_5m, volume_5m] = get_5min_data()
+    
+    // Check Criteria 1 (5-minute close above OR high or below OR low)
+    if or_established and not trading_disabled and not criteria_1_long and not criteria_1_short and trades_today < max_trades_per_day
+        // Long criteria 1: 5-min close above OR high
+        if close_5m > or_high and close_5m[1] <= or_high
+            criteria_1_long := true
+            criteria_1_time := bar_index
+            criteria_1_price := close_5m
+            highest_since_c1 := high
+            lowest_since_c1 := low
+            pending_direction := "long"
+            touches_count := 0
+            moved_away_from_level := false
+            
+            label.new(bar_index, low, "C1 LONG\n5m close: " + str.tostring(close_5m, "#.##"), 
+                     color=color.lime, textcolor=color.black, size=size.small, style=label.style_label_up)
+        
+        // Short criteria 1: 5-min close below OR low
+        else if close_5m < or_low and close_5m[1] >= or_low
+            criteria_1_short := true
+            criteria_1_time := bar_index
+            criteria_1_price := close_5m
+            highest_since_c1 := high
+            lowest_since_c1 := low
+            pending_direction := "short"
+            touches_count := 0
+            moved_away_from_level := false
+            
+            label.new(bar_index, high, "C1 SHORT\n5m close: " + str.tostring(close_5m, "#.##"), 
+                     color=color.red, textcolor=color.white, size=size.small, style=label.style_label_down)
+    
+    // Update highest/lowest since criteria 1
+    if criteria_1_long or criteria_1_short
+        if na(highest_since_c1) or high > highest_since_c1
+            highest_since_c1 := high
+        if na(lowest_since_c1) or low < lowest_since_c1
+            lowest_since_c1 := low
+        
+        // Check if price has moved away from breakout level
+        if criteria_1_long and not moved_away_from_level
+            // For long setup, check if price has moved significantly above OR high
+            if low > or_high + (or_high - or_low) * 0.1  // 10% of OR range above OR high
+                moved_away_from_level := true
+        
+        if criteria_1_short and not moved_away_from_level
+            // For short setup, check if price has moved significantly below OR low  
+            if high < or_low - (or_high - or_low) * 0.1  // 10% of OR range below OR low
+                moved_away_from_level := true
+    
+    // Check time limit for criteria 2
+    bars_since_c1 = bar_index - criteria_1_time
+    time_limit_exceeded = bars_since_c1 > max_wait_time
+    
+    if time_limit_exceeded and (criteria_1_long or criteria_1_short) and not criteria_2_met
+        criteria_1_long := false
+        criteria_1_short := false
+        pending_direction := na
+        label.new(bar_index, close, "TIME LIMIT\nEXCEEDED", 
+                 color=color.orange, textcolor=color.black, size=size.small)
+    
+    // Check Criteria 2 (weak price action retest)
+    if (criteria_1_long or criteria_1_short) and not criteria_2_met and not time_limit_exceeded
+        
+        if criteria_1_long and pending_direction == "long"
+            // Look for retest of OR high (only after price moved away)
+            if moved_away_from_level and is_bullish_retest(or_high)
+                criteria_2_met := true
+                long_signaled := true
+                
+                label.new(bar_index, low, "C2 LONG\nBullish Retest", 
+                         color=color.lime, textcolor=color.black, size=size.small, style=label.style_label_up)
+        
+        else if criteria_1_short and pending_direction == "short"
+            // Look for retest of OR low (only after price moved away)
+            if moved_away_from_level and is_bearish_retest(or_low)
+                criteria_2_met := true
+                short_signaled := true
+                
+                label.new(bar_index, high, "C2 SHORT\nBearish Retest", 
+                         color=color.red, textcolor=color.white, size=size.small, style=label.style_label_down)
+
+// Plot entry signals (must be in global scope)
+plotshape(long_signaled, title="Long Entry Signal", location=location.belowbar, 
+         style=shape.arrowup, size=size.normal, color=color.lime)
+plotshape(short_signaled, title="Short Entry Signal", location=location.abovebar, 
+         style=shape.arrowdown, size=size.normal, color=color.red)
+
+// Execute trades on next bar open
+if barstate.isconfirmed and long_signaled
+    trades_today := trades_today + 1
+    entry_price := close
+    stop_loss := lowest_since_c1
+    
+    // TP: Greater of 2x SL distance or highest since C1, but capped at max TP multiple
+    sl_distance = entry_price - stop_loss
+    tp_option1 = entry_price + (sl_distance * 2)
+    tp_option2 = highest_since_c1
+    tp_uncapped = math.max(tp_option1, tp_option2)
+    tp_max = entry_price + (sl_distance * max_tp_multiple)
+    take_profit := math.min(tp_uncapped, tp_max)
+    
+    strategy.entry("Long", strategy.long)
+    strategy.exit("Long Exit", "Long", stop=stop_loss, limit=take_profit)
+    
+    // Draw TP/SL lines
+    if show_tp_sl_lines
+        new_sl_line = line.new(bar_index, stop_loss, bar_index + 20, stop_loss, 
+                              color=color.red, width=2, style=line.style_dashed)
+        new_tp_line = line.new(bar_index, take_profit, bar_index + 20, take_profit, 
+                              color=color.green, width=2, style=line.style_dashed)
+        array.push(sl_lines, new_sl_line)
+        array.push(tp_lines, new_tp_line)
+    
+    // Reset signals
+    long_signaled := false
+    criteria_1_long := false
+    criteria_2_met := false
+    pending_direction := na
+
+if barstate.isconfirmed and short_signaled
+    trades_today := trades_today + 1
+    entry_price := close
+    stop_loss := highest_since_c1
+    
+    // TP: Greater of 2x SL distance or lowest since C1, but capped at max TP multiple
+    sl_distance = stop_loss - entry_price
+    tp_option1 = entry_price - (sl_distance * 2)
+    tp_option2 = lowest_since_c1
+    tp_uncapped = math.min(tp_option1, tp_option2)
+    tp_max = entry_price - (sl_distance * max_tp_multiple)
+    take_profit := math.max(tp_uncapped, tp_max)
+    
+    strategy.entry("Short", strategy.short)
+    strategy.exit("Short Exit", "Short", stop=stop_loss, limit=take_profit)
+    
+    // Draw TP/SL lines
+    if show_tp_sl_lines
+        new_sl_line = line.new(bar_index, stop_loss, bar_index + 20, stop_loss, 
+                              color=color.red, width=2, style=line.style_dashed)
+        new_tp_line = line.new(bar_index, take_profit, bar_index + 20, take_profit, 
+                              color=color.green, width=2, style=line.style_dashed)
+        array.push(sl_lines, new_sl_line)
+        array.push(tp_lines, new_tp_line)
+    
+    // Reset signals
+    short_signaled := false
+    criteria_1_short := false
+    criteria_2_met := false
+    pending_direction := na
+
+// Close trades at end of day
+if is_eod_close and strategy.position_size != 0
+    strategy.close_all("EOD Close")
+    
+    // Clear TP/SL lines
+    clear_tp_sl_lines()
+
+// Clear TP/SL lines when trades close (stop loss or take profit hit)
+if strategy.position_size == 0 and strategy.position_size[1] != 0
+    clear_tp_sl_lines()
+
+// =============================================================================
+// DEBUG TABLE
+// =============================================================================
+
+if barstate.islast
+    var table debug_table = table.new(position.top_right, 2, 12, bgcolor=color.white, border_width=1)
+    
+    table.cell(debug_table, 0, 0, "OR High:", text_color=color.black, text_size=size.small)
+    table.cell(debug_table, 1, 0, na(or_high) ? "N/A" : str.tostring(or_high, "#.##"), text_color=color.black, text_size=size.small)
+    table.cell(debug_table, 0, 1, "OR Low:", text_color=color.black, text_size=size.small)
+    table.cell(debug_table, 1, 1, na(or_low) ? "N/A" : str.tostring(or_low, "#.##"), text_color=color.black, text_size=size.small)
+    table.cell(debug_table, 0, 2, "OR Established:", text_color=color.black, text_size=size.small)
+    table.cell(debug_table, 1, 2, or_established ? "YES" : "NO", text_color=or_established ? color.green : color.red, text_size=size.small)
+    table.cell(debug_table, 0, 3, "Criteria 1 Long:", text_color=color.black, text_size=size.small)
+    table.cell(debug_table, 1, 3, criteria_1_long ? "YES" : "NO", text_color=criteria_1_long ? color.green : color.gray, text_size=size.small)
+    table.cell(debug_table, 0, 4, "Criteria 1 Short:", text_color=color.black, text_size=size.small)
+    table.cell(debug_table, 1, 4, criteria_1_short ? "YES" : "NO", text_color=criteria_1_short ? color.red : color.gray, text_size=size.small)
+    table.cell(debug_table, 0, 5, "Criteria 2 Met:", text_color=color.black, text_size=size.small)
+    table.cell(debug_table, 1, 5, criteria_2_met ? "YES" : "NO", text_color=criteria_2_met ? color.green : color.gray, text_size=size.small)
+    table.cell(debug_table, 0, 6, "Trades Today:", text_color=color.black, text_size=size.small)
+    table.cell(debug_table, 1, 6, str.tostring(trades_today) + "/" + str.tostring(max_trades_per_day), text_color=color.blue, text_size=size.small)
+    table.cell(debug_table, 0, 7, "Gap Detected:", text_color=color.black, text_size=size.small)
+    table.cell(debug_table, 1, 7, gap_detected ? "YES" : "NO", text_color=gap_detected ? color.red : color.green, text_size=size.small)
+    table.cell(debug_table, 0, 8, "Trading Disabled:", text_color=color.black, text_size=size.small)
+    table.cell(debug_table, 1, 8, trading_disabled ? "YES" : "NO", text_color=trading_disabled ? color.red : color.green, text_size=size.small)
+    table.cell(debug_table, 0, 9, "Pending Direction:", text_color=color.black, text_size=size.small)
+    table.cell(debug_table, 1, 9, na(pending_direction) ? "NONE" : pending_direction, text_color=color.blue, text_size=size.small)
+    table.cell(debug_table, 0, 10, "Current Position:", text_color=color.black, text_size=size.small)
+    pos_text = strategy.position_size > 0 ? "LONG" : strategy.position_size < 0 ? "SHORT" : "NONE"
+    pos_color = strategy.position_size > 0 ? color.green : strategy.position_size < 0 ? color.red : color.gray
+    table.cell(debug_table, 1, 10, pos_text, text_color=pos_color, text_size=size.small)
+    table.cell(debug_table, 0, 11, "Time ET:", text_color=color.black, text_size=size.small)
+    current_hour = hour(time, "America/New_York")
+    current_minute = minute(time, "America/New_York")
+    time_display = str.format("{0,number,00}:{1,number,00}", current_hour, current_minute)
+    table.cell(debug_table, 1, 11, time_display, text_color=color.blue, text_size=size.small) 

@@ -1,0 +1,326 @@
+//@version=6
+strategy("Opening Range Reversal Strategy", shorttitle="ORR", overlay=true,
+         default_qty_type=strategy.fixed, 
+         default_qty_value=1,
+         currency=currency.USD)
+
+// =============================================================================
+// INPUT PARAMETERS
+// =============================================================================
+
+// Strategy Settings
+trade_quantity = input.int(1, "Trade Quantity", minval=1, maxval=1000, step=1,
+                           tooltip="Number of contracts per trade", 
+                           group="Strategy Settings")
+
+sl_buffer_ticks = input.int(5, "Stop Loss Buffer (Ticks)", minval=1, maxval=50, step=1,
+                            tooltip="Buffer in ticks below Dlow for long SL, above Dhig for short SL", 
+                            group="Strategy Settings")
+
+tp_buffer_ticks = input.int(3, "Take Profit Buffer (Ticks)", minval=1, maxval=50, step=1,
+                            tooltip="Additional ticks added to calculated TP level", 
+                            group="Strategy Settings")
+
+// Time Controls
+cutoff_hour = input.int(10, "Stop Looking Hour (ET)", minval=10, maxval=15, step=1,
+                        tooltip="Hour to stop looking for new trades", 
+                        group="Time Controls")
+
+cutoff_minute = input.int(0, "Stop Looking Minute", 
+                          options=[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55],
+                          tooltip="Minute to stop looking for new trades", 
+                          group="Time Controls")
+
+force_close_hour = input.int(15, "Force Close Hour (ET)", minval=14, maxval=16, step=1,
+                             tooltip="Hour to force close all positions", 
+                             group="Time Controls")
+
+force_close_minute = input.int(50, "Force Close Minute", 
+                               options=[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55],
+                               tooltip="Minute to force close all positions", 
+                               group="Time Controls")
+
+// Visual Settings
+show_debug_table = input.bool(true, "Show Debug Table", group="Display")
+show_trade_levels = input.bool(true, "Show Trade Levels", group="Display")
+
+// =============================================================================
+// TIME FUNCTIONS
+// =============================================================================
+
+get_current_hour() => hour(time, "America/New_York")
+get_current_minute() => minute(time, "America/New_York")
+
+is_trading_day() => dayofweek != dayofweek.saturday and dayofweek != dayofweek.sunday
+
+is_930_am() =>
+    get_current_hour() == 9 and get_current_minute() == 30
+
+is_market_open_first_candle() =>
+    get_current_hour() == 9 and get_current_minute() == 30
+
+is_within_cutoff_time() =>
+    if not is_trading_day()
+        false
+    else
+        current_time_minutes = get_current_hour() * 60 + get_current_minute()
+        cutoff_time_minutes = cutoff_hour * 60 + cutoff_minute
+        current_time_minutes <= cutoff_time_minutes
+
+is_force_close_time() =>
+    if not is_trading_day()
+        false
+    else
+        current_hour = get_current_hour()
+        current_minute = get_current_minute()
+        (current_hour == force_close_hour and current_minute >= force_close_minute) or
+        (current_hour > force_close_hour)
+
+// =============================================================================
+// DAILY DATA FETCHING
+// =============================================================================
+
+// Fetch daily 50 SMA and ATR(14)
+daily_50_sma = request.security(syminfo.tickerid, "1D", ta.sma(close, 50))
+daily_atr_14 = request.security(syminfo.tickerid, "1D", ta.atr(14))
+
+// =============================================================================
+// STRATEGY VARIABLES
+// =============================================================================
+
+var bool trade_taken_today = false
+var string trade_bias = na
+var float drng = na
+var bool candle1_formed = false
+var bool looking_for_candle3 = false
+var bool candle3_found = false
+var float dhig = na
+var float dlow = na
+var float orng = na
+var bool valid_setup = false
+var float entry_level = na
+var float sl_level = na
+var float tp_level = na
+var int candle1_bar_index = na
+var int candle3_bar_index = na
+var float candle1_open = na
+var float candle1_close = na
+var bool candle1_bearish = false
+var bool candle1_bullish = false
+
+// Reset daily variables
+if ta.change(time("D")) != 0
+    trade_taken_today := false
+    trade_bias := na
+    drng := na
+    candle1_formed := false
+    looking_for_candle3 := false
+    candle3_found := false
+    dhig := na
+    dlow := na
+    orng := na
+    valid_setup := false
+    entry_level := na
+    sl_level := na
+    tp_level := na
+    candle1_bar_index := na
+    candle3_bar_index := na
+    candle1_open := na
+    candle1_close := na
+    candle1_bearish := false
+    candle1_bullish := false
+
+// =============================================================================
+// STRATEGY LOGIC
+// =============================================================================
+
+// Step 1: At 9:30 AM, determine trade bias and save Drng
+if is_930_am() and not trade_taken_today and is_trading_day()
+    drng := daily_atr_14
+    if close > daily_50_sma
+        trade_bias := "LONG"
+    else if close < daily_50_sma
+        trade_bias := "SHORT"
+
+// Step 2: Check if Candle 1 (9:30-9:35) meets criteria
+if get_current_hour() == 9 and get_current_minute() == 35 and not candle1_formed and not na(trade_bias)
+    // Store candle 1 debug info
+    candle1_open := open[1]
+    candle1_close := close[1]
+    candle1_bearish := not na(close[1]) and not na(open[1]) and close[1] < open[1]
+    candle1_bullish := not na(close[1]) and not na(open[1]) and close[1] > open[1]
+    
+    if trade_bias == "LONG" and close[1] < open[1]  // Previous candle was bearish for long setup
+        candle1_formed := true
+        looking_for_candle3 := true
+        candle1_bar_index := bar_index - 1  // Previous candle's bar index
+        dhig := high[1]  // Previous candle's high
+        dlow := low[1]   // Previous candle's low
+    else if trade_bias == "SHORT" and close[1] > open[1]  // Previous candle was bullish for short setup
+        candle1_formed := true
+        looking_for_candle3 := true
+        candle1_bar_index := bar_index - 1  // Previous candle's bar index
+        dhig := high[1]  // Previous candle's high
+        dlow := low[1]   // Previous candle's low
+
+// Step 3: Look for Candle 3 (first reversal candle) and update range
+if looking_for_candle3 and not candle3_found and is_within_cutoff_time()
+    // Update range continuously
+    dhig := math.max(dhig, high)
+    dlow := math.min(dlow, low)
+    
+    // Check for reversal candle
+    if trade_bias == "LONG" and close > open  // First bullish candle
+        candle3_found := true
+        candle3_bar_index := bar_index
+        looking_for_candle3 := false
+    else if trade_bias == "SHORT" and close < open  // First bearish candle
+        candle3_found := true
+        candle3_bar_index := bar_index
+        looking_for_candle3 := false
+
+// Step 4: Calculate Orng and validate setup when Candle 3 is found
+if candle3_found and not valid_setup and not na(dhig) and not na(dlow) and not na(drng)
+    orng := dhig - dlow
+    if orng > (0.2 * drng)
+        valid_setup := true
+        
+        if trade_bias == "LONG"
+            // Entry at high of Candle 3 (current candle)
+            entry_level := high
+            sl_level := dlow - (sl_buffer_ticks * syminfo.mintick)
+            tp_level := entry_level + ((dhig - entry_level) / 2) + (tp_buffer_ticks * syminfo.mintick)
+        else if trade_bias == "SHORT"
+            // Entry at low of Candle 3 (current candle)
+            entry_level := low
+            sl_level := dhig + (sl_buffer_ticks * syminfo.mintick)
+            tp_level := entry_level - ((entry_level - dlow) / 2) - (tp_buffer_ticks * syminfo.mintick)
+
+// Step 5: Execute trade with stop orders (only within cutoff time)
+if valid_setup and not trade_taken_today and strategy.position_size == 0 and is_within_cutoff_time()
+    if trade_bias == "LONG"
+        // Enter long when price breaks above high of Candle 3
+        strategy.entry("Long", strategy.long, qty=trade_quantity, stop=entry_level)
+        strategy.exit("Long Exit", "Long", stop=sl_level, limit=tp_level)
+        trade_taken_today := true
+    else if trade_bias == "SHORT"
+        // Enter short when price breaks below low of Candle 3
+        strategy.entry("Short", strategy.short, qty=trade_quantity, stop=entry_level)
+        strategy.exit("Short Exit", "Short", stop=sl_level, limit=tp_level)
+        trade_taken_today := true
+
+// Cancel pending orders if outside cutoff time and reset setup
+if not is_within_cutoff_time() and not trade_taken_today and strategy.position_size == 0
+    strategy.cancel_all()
+    if valid_setup
+        valid_setup := false  // Reset setup to prevent any further attempts
+
+// Force close at 3:50 PM
+if is_force_close_time() and strategy.position_size != 0
+    strategy.close_all("Force Close")
+
+// =============================================================================
+// VISUALIZATION
+// =============================================================================
+
+// Plot daily 50 SMA for reference
+plot(daily_50_sma, "Daily 50 SMA", color=color.blue, linewidth=2)
+
+// Plot range levels when valid setup exists
+plot(show_trade_levels and not na(dhig) ? dhig : na, "Dhig", color=color.red, style=plot.style_stepline)
+plot(show_trade_levels and not na(dlow) ? dlow : na, "Dlow", color=color.green, style=plot.style_stepline)
+
+// Plot entry, SL, TP levels
+plot(show_trade_levels and not na(entry_level) ? entry_level : na, "Entry", color=color.yellow, style=plot.style_stepline)
+plot(show_trade_levels and not na(sl_level) ? sl_level : na, "Stop Loss", color=color.red, style=plot.style_stepline, linewidth=2)
+plot(show_trade_levels and not na(tp_level) ? tp_level : na, "Take Profit", color=color.green, style=plot.style_stepline, linewidth=2)
+
+// =============================================================================
+// DEBUG TABLE
+// =============================================================================
+
+if show_debug_table and barstate.islast
+    var table debug_table = table.new(position.top_left, 2, 20, bgcolor=color.white, border_width=1)
+    
+    table.cell(debug_table, 0, 0, "ORR Debug Info", text_color=color.black, bgcolor=color.gray)
+    table.cell(debug_table, 1, 0, "Value", text_color=color.black, bgcolor=color.gray)
+    
+    table.cell(debug_table, 0, 1, "Current Time ET", text_color=color.black)
+    current_time_str = str.format("{0,number,00}:{1,number,00}", get_current_hour(), get_current_minute())
+    table.cell(debug_table, 1, 1, current_time_str, text_color=color.black)
+    
+    table.cell(debug_table, 0, 2, "Trade Bias", text_color=color.black)
+    table.cell(debug_table, 1, 2, na(trade_bias) ? "NONE" : trade_bias, text_color=color.black)
+    
+    table.cell(debug_table, 0, 3, "Daily 50 SMA", text_color=color.black)
+    table.cell(debug_table, 1, 3, str.tostring(daily_50_sma, "#.##"), text_color=color.black)
+    
+    table.cell(debug_table, 0, 4, "Drng (Daily ATR)", text_color=color.black)
+    table.cell(debug_table, 1, 4, na(drng) ? "N/A" : str.tostring(drng, "#.##"), text_color=color.black)
+    
+    table.cell(debug_table, 0, 5, "Candle 1 Formed", text_color=color.black)
+    table.cell(debug_table, 1, 5, candle1_formed ? "YES" : "NO", 
+               text_color=candle1_formed ? color.green : color.red)
+    
+    table.cell(debug_table, 0, 6, "Looking for C3", text_color=color.black)
+    table.cell(debug_table, 1, 6, looking_for_candle3 ? "YES" : "NO", 
+               text_color=looking_for_candle3 ? color.orange : color.gray)
+    
+    table.cell(debug_table, 0, 7, "Candle 3 Found", text_color=color.black)
+    table.cell(debug_table, 1, 7, candle3_found ? "YES" : "NO", 
+               text_color=candle3_found ? color.green : color.red)
+    
+    table.cell(debug_table, 0, 8, "Dhig", text_color=color.black)
+    table.cell(debug_table, 1, 8, na(dhig) ? "N/A" : str.tostring(dhig, "#.##"), text_color=color.black)
+    
+    table.cell(debug_table, 0, 9, "Dlow", text_color=color.black)
+    table.cell(debug_table, 1, 9, na(dlow) ? "N/A" : str.tostring(dlow, "#.##"), text_color=color.black)
+    
+    table.cell(debug_table, 0, 10, "Orng", text_color=color.black)
+    table.cell(debug_table, 1, 10, na(orng) ? "N/A" : str.tostring(orng, "#.##"), text_color=color.black)
+    
+    table.cell(debug_table, 0, 11, "0.2 * Drng", text_color=color.black)
+    threshold = na(drng) ? na : 0.2 * drng
+    table.cell(debug_table, 1, 11, na(threshold) ? "N/A" : str.tostring(threshold, "#.##"), text_color=color.black)
+    
+    table.cell(debug_table, 0, 12, "Valid Setup", text_color=color.black)
+    table.cell(debug_table, 1, 12, valid_setup ? "YES" : "NO", 
+               text_color=valid_setup ? color.green : color.red)
+    
+    table.cell(debug_table, 0, 13, "Trade Taken", text_color=color.black)
+    table.cell(debug_table, 1, 13, trade_taken_today ? "YES" : "NO", 
+               text_color=trade_taken_today ? color.green : color.red)
+    
+    table.cell(debug_table, 0, 14, "Position Size", text_color=color.black)
+    table.cell(debug_table, 1, 14, str.tostring(strategy.position_size), text_color=color.black)
+    
+    table.cell(debug_table, 0, 15, "Within Cutoff", text_color=color.black)
+    table.cell(debug_table, 1, 15, is_within_cutoff_time() ? "YES" : "NO", 
+               text_color=is_within_cutoff_time() ? color.green : color.red)
+    
+    // Candle 1 Debug Information
+    table.cell(debug_table, 0, 16, "C1 Open", text_color=color.black)
+    table.cell(debug_table, 1, 16, na(candle1_open) ? "N/A" : str.tostring(candle1_open, "#.##"), text_color=color.black)
+    
+    table.cell(debug_table, 0, 17, "C1 Close", text_color=color.black)
+    table.cell(debug_table, 1, 17, na(candle1_close) ? "N/A" : str.tostring(candle1_close, "#.##"), text_color=color.black)
+    
+    table.cell(debug_table, 0, 18, "C1 Bearish", text_color=color.black)
+    table.cell(debug_table, 1, 18, na(candle1_open) ? "N/A" : (candle1_bearish ? "YES" : "NO"), 
+               text_color=na(candle1_open) ? color.gray : (candle1_bearish ? color.green : color.red))
+    
+    table.cell(debug_table, 0, 19, "C1 Bullish", text_color=color.black)
+    table.cell(debug_table, 1, 19, na(candle1_open) ? "N/A" : (candle1_bullish ? "YES" : "NO"), 
+               text_color=na(candle1_open) ? color.gray : (candle1_bullish ? color.green : color.red))
+
+// =============================================================================
+// ALERTS
+// =============================================================================
+
+if trade_taken_today and trade_taken_today[1] == false
+    direction = trade_bias == "LONG" ? "LONG" : "SHORT"
+    alert_message = direction + " Entry: ORR Setup | Entry: " + str.tostring(entry_level, "#.##") + 
+                   " | SL: " + str.tostring(sl_level, "#.##") + 
+                   " | TP: " + str.tostring(tp_level, "#.##") + 
+                   " | Orng: " + str.tostring(orng, "#.##")
+    alert(alert_message, alert.freq_once_per_bar) 

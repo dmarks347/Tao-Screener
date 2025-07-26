@@ -1,0 +1,545 @@
+//@version=5
+strategy("NY Session Box with Previous Day Sweep and iFVGs Strategy", overlay=true, max_bars_back=5000, max_boxes_count=500, max_labels_count=500, max_lines_count=500, initial_capital=10000, default_qty_type=strategy.percent_of_equity, default_qty_value=100)
+
+// === Strategy Inputs ===
+contracts = input.int(1, "Number of Contracts", minval=1, group="Strategy Settings")
+atrPeriod = input.int(14, "ATR Period", minval=1, group="Strategy Settings")
+atrMultiplier = input.float(2, "ATR Multiplier for SL", minval=0.1, step=0.1, group="Strategy Settings", tooltip="Stop Loss will be ATR × this value")
+tpMultiplier = input.float(2, "Take Profit Multiplier", minval=0.1, step=0.1, group="Strategy Settings", tooltip="Take Profit will be Stop Loss size multiplied by this value")
+maxTradesPerDay = input.int(2, "Maximum Trades Per Day", minval=1, group="Strategy Settings")
+orderTimeout = input.int(10, "Order Timeout (Bars)", minval=1, group="Strategy Settings", tooltip="Cancel limit order if not filled within this many bars")
+useMarketOrders = input.bool(false, "Use Market Orders", group="Strategy Settings", tooltip="If enabled, entries will be executed at market price instead of limit orders")
+
+// === Previous Day Sweep Inputs ===
+dayCount = input.int(10, "Number of Previous Days", minval=1, maxval=20, group="Previous Day Sweep")
+highColor = input.color(color.red, "High Level Color", group="Previous Day Sweep")
+lowColor = input.color(color.blue, "Low Level Color", group="Previous Day Sweep")
+highTriangleColor = input.color(color.red, "High Breakout Triangle Color", group="Previous Day Sweep")
+lowTriangleColor = input.color(color.blue, "Low Breakout Triangle Color", group="Previous Day Sweep")
+lineTransparency = input.int(20, "Line Transparency", minval=0, maxval=100, tooltip="0 = fully visible, 100 = invisible", group="Previous Day Sweep")
+lineWidth = input.int(1, "Line Width", minval=1, maxval=4, group="Previous Day Sweep")
+showLabels = input.bool(true, "Show Breakout Labels", group="Previous Day Sweep")
+labelSize = input.string("small", "Label Size", options=["tiny", "small", "normal", "large", "huge", "auto"], group="Previous Day Sweep")
+
+// === NY Session Inputs ===
+nySession = input.session("0930-1600", "NY Session Time", group="Session Settings", tooltip="Time is in America/New York time zone. For best results, set your chart to America/New York timezone.")
+useNewYorkTime = input.bool(true, "Force America/New York Time", group="Session Settings", tooltip="Enable to interpret session times as America/New York time regardless of chart timezone")
+nyBoxColor = input.color(color.new(color.green, 80), "NY Box Color", group="Visual Settings")
+boxLineWidth = input.int(1, "Box Border Width", minval=1, maxval=4, group="Visual Settings")
+drawOnlyLatestBox = input.bool(false, "Draw Only Latest Box", group="Visual Settings", tooltip="When enabled, only the most recent session box will be displayed")
+
+// === iFVGs Inputs ===
+ShowAllFVG = input.bool(true, 'Show All FVG', group='iFVGs Global Setting')
+ShowAllIFVG = input.bool(true, 'Show All Inversion FVG', group='iFVGs Global Setting')
+FVGVaP = input.int(500, 'FVG & IFVG Validity Period (Bar)', group='iFVGs Logic Parameter', maxval=4998, minval=10, tooltip='You can set the validity period of each FVG & IFVG based on the number of candles that have passed since the origin of the Order Block.')
+SCMode = input.string('Light', 'Switching Colors Theme Mode', options=['Off', 'Light', 'Dark'], group='iFVGs Global Setting')
+
+// FVG Settings
+PShowDeFVG = input.bool(true, 'Show Bullish FVG', group='iFVGs FVG', inline='DFVG')
+PShowSuFVG = input.bool(true, 'Show Bearish FVG', group='iFVGs FVG', inline='SFVG')
+OCShowDeFVG = input.color(#4caf4f65, '', group='iFVGs FVG', inline='DFVG')
+OCShowSuFVG = input.color(#ff525291, '', group='iFVGs FVG', inline='SFVG')
+MLFVG = input.string('50 % OB', 'Mitigation Level FVG', ['Proximal', '50 % OB', 'Distal'], tooltip='Using this entry, you can determine which level the price reacts to in a FVG.', group='iFVGs FVG')
+
+// Inversion FVG Settings
+PShowDeIFVG = input.bool(true, 'Show Bearish Inversion FVG', group='iFVGs Inversion FVG', inline='IDFVG')
+PShowSuIFVG = input.bool(true, 'Show Bullish Inversion FVG', group='iFVGs Inversion FVG', inline='ISFVG')
+OCShowDeIFVG = input.color(#ff52522f, '', group='iFVGs Inversion FVG', inline='IDFVG')
+OCShowSuIFVG = input.color(#4caf4f27, '', group='iFVGs Inversion FVG', inline='ISFVG')
+MLIFVG = input.string('50 % OB', 'Mitigation Level IFVG', ['Proximal', '50 % OB', 'Distal'], tooltip='Using this entry, you can determine which level the price reacts to in a Inversion FVG.', group='iFVGs Inversion FVG')
+
+// FVG Filter Settings
+PFVGFilter = input.bool(true, 'FVG Filter ............', group='iFVGs FVG', inline='FVG Filter')
+PFVGFilterType = input.string('Very Defensive', '', ['Very Aggressive', 'Aggressive', 'Defensive', 'Very Defensive'], group='iFVGs FVG', inline='FVG Filter', tooltip='If it is "On", this filter will filter "FVGs" based on the width of the Zone. From "Very Aggressive" to "Very Defensive" the width of the "FVG" decreases.')
+
+// Triangle Settings
+ShowTriangles = input.bool(true, "Show FVG Break Triangles", group="iFVGs Triangles")
+FVGLookbackPeriod = input.int(50, "FVG Lookback Period (Bars)", minval=1, maxval=500, group="iFVGs Triangles")
+BearishFVGBreakColor = input.color(color.green, "Bearish FVG Break Triangle Color", group="iFVGs Triangles")
+BullishFVGBreakColor = input.color(color.red, "Bullish FVG Break Triangle Color", group="iFVGs Triangles")
+
+// ATR Settings
+ATRPeriod = input.int(14, "ATR Period", minval=1, group="iFVGs Triangles")
+ATRMultiplier = input.float(0.5, "ATR Break Threshold Multiplier", minval=0, step=0.1, group="iFVGs Triangles", tooltip="Price must close X × ATR beyond the FVG boundary for a valid break signal")
+
+// === Strategy Variables ===
+var int tradesToday = 0
+var float lastBearishFVGHigh = na
+var float lastBearishFVGLow = na
+var float lastBullishFVGHigh = na
+var float lastBullishFVGLow = na
+var bool waitingForBearishFVGInversion = false
+var bool waitingForBullishFVGInversion = false
+var bool waitingForBullishFVGAfterLowSweep = false
+var bool waitingForBearishFVGAfterHighSweep = false
+var int longOrderBar = na
+var int shortOrderBar = na
+var float longOrderPrice = na
+var float shortOrderPrice = na
+var line longSL = na
+var line longTP = na
+var line shortSL = na
+var line shortTP = na
+
+// === Previous Day Sweep Variables ===
+var int prevDayStartBar = na
+var int prevDayEndBar = na
+var int currentDayStartBar = 0
+var float[] prevHighs = array.new_float(dayCount, na)
+var float[] prevLows = array.new_float(dayCount, na)
+var int[] highBars = array.new_int(dayCount, na)
+var int[] lowBars = array.new_int(dayCount, na)
+var line[] highLines = array.new_line(dayCount, na)
+var line[] lowLines = array.new_line(dayCount, na)
+var bool[] highBroken = array.new_bool(dayCount, false)
+var bool[] lowBroken = array.new_bool(dayCount, false)
+var int[] highBreakBars = array.new_int(dayCount, na)
+var int[] lowBreakBars = array.new_int(dayCount, na)
+var bool highBreakoutToday = false
+var bool lowBreakoutToday = false
+
+// === NY Session Variables ===
+var float nyHigh = na
+var float nyLow = na
+var int nyStartBar = na
+var int nyEndBar = na
+var box[] nyBoxes = array.new_box()
+var box currentBox = na
+bool inNYSession = useNewYorkTime ? not na(time("D", nySession, "America/New_York")) : not na(time(timeframe.period, nySession))
+
+// === iFVGs Variables ===
+var float bearishFVGHigh = na
+var float bearishFVGLow = na
+var int bearishFVGBarIndex = na
+var float bullishFVGHigh = na 
+var float bullishFVGLow = na
+var int bullishFVGBarIndex = na
+
+// === Previous Day Sweep Logic ===
+newDay = dayofweek != dayofweek[1] or dayofmonth != dayofmonth[1]
+
+// Track today's breakouts and reset on new day
+if newDay
+    highBreakoutToday := false
+    lowBreakoutToday := false
+    tradesToday := 0
+    waitingForBearishFVGInversion := false
+    waitingForBullishFVGInversion := false
+    waitingForBullishFVGAfterLowSweep := false
+    waitingForBearishFVGAfterHighSweep := false
+
+// Variables to detect exact breakout moments
+highBreakout = false
+lowBreakout = false
+
+// Check for breakouts of all days' levels
+for i = 0 to dayCount - 1
+    // Check high breakouts
+    if not na(array.get(prevHighs, i)) and not array.get(highBroken, i)
+        if high > array.get(prevHighs, i) and high[1] <= array.get(prevHighs, i)
+            highBreakout := true
+            if i == 0
+                highBreakoutToday := true
+            lineObj = array.get(highLines, i)
+            if not na(lineObj)
+                line.set_x2(lineObj, bar_index)
+            array.set(highBroken, i, true)
+            array.set(highBreakBars, i, bar_index)
+            if inNYSession and tradesToday < maxTradesPerDay
+                waitingForBullishFVGInversion := true
+                waitingForBearishFVGAfterHighSweep := true
+
+    // Check low breakouts
+    if not na(array.get(prevLows, i)) and not array.get(lowBroken, i)
+        if low < array.get(prevLows, i) and low[1] >= array.get(prevLows, i)
+            lowBreakout := true
+            if i == 0
+                lowBreakoutToday := true
+            lineObj = array.get(lowLines, i)
+            if not na(lineObj)
+                line.set_x2(lineObj, bar_index)
+            array.set(lowBroken, i, true)
+            array.set(lowBreakBars, i, bar_index)
+            if inNYSession and tradesToday < maxTradesPerDay
+                waitingForBearishFVGInversion := true
+                waitingForBullishFVGAfterLowSweep := true
+
+// Plot the breakout triangles and labels
+plotshape(highBreakout, title="High Breakout", location=location.abovebar, color=highTriangleColor, style=shape.triangledown, size=size.small)
+plotshape(lowBreakout, title="Low Breakout", location=location.belowbar, color=lowTriangleColor, style=shape.triangleup, size=size.small)
+
+// Plot labels for breakouts during NY session
+if showLabels
+    if highBreakout and inNYSession
+        label.new(bar_index, high, "PDH NY Sweep", color=color.new(highTriangleColor, 50), style=label.style_label_down, textcolor=highTriangleColor, size=labelSize)
+    if lowBreakout and inNYSession
+        label.new(bar_index, low, "PDL NY Sweep", color=color.new(lowTriangleColor, 50), style=label.style_label_up, textcolor=lowTriangleColor, size=labelSize)
+
+// Update lines to extend to current bar ONLY if not broken yet
+if barstate.islast
+    for i = 0 to dayCount - 1
+        highLineObj = array.get(highLines, i)
+        lowLineObj = array.get(lowLines, i)
+        
+        if not na(highLineObj) and not array.get(highBroken, i)
+            line.set_x2(highLineObj, bar_index)
+        if not na(lowLineObj) and not array.get(lowBroken, i)
+            line.set_x2(lowLineObj, bar_index)
+
+// Process new day
+if newDay
+    prevDayEndBar := bar_index - 1
+    prevDayStartBar := currentDayStartBar
+    currentDayStartBar := bar_index
+    
+    if prevDayStartBar >= 0 and prevDayEndBar > prevDayStartBar
+        float dayHigh = high[bar_index - prevDayStartBar]
+        float dayLow = low[bar_index - prevDayStartBar]
+        int dayHighBar = prevDayStartBar
+        int dayLowBar = prevDayStartBar
+        
+        for i = prevDayStartBar to prevDayEndBar
+            barIndex = bar_index - i
+            if barIndex >= 0
+                if high[barIndex] > dayHigh
+                    dayHigh := high[barIndex]
+                    dayHighBar := i
+                if low[barIndex] < dayLow
+                    dayLow := low[barIndex]
+                    dayLowBar := i
+        
+        float tempLastHigh = array.get(prevHighs, dayCount-1)
+        float tempLastLow = array.get(prevLows, dayCount-1)
+        int tempLastHighBar = array.get(highBars, dayCount-1)
+        int tempLastLowBar = array.get(lowBars, dayCount-1)
+        bool tempLastHighBroken = array.get(highBroken, dayCount-1)
+        bool tempLastLowBroken = array.get(lowBroken, dayCount-1)
+        int tempLastHighBreakBar = array.get(highBreakBars, dayCount-1)
+        int tempLastLowBreakBar = array.get(lowBreakBars, dayCount-1)
+        line tempLastHighLine = array.get(highLines, dayCount-1)
+        line tempLastLowLine = array.get(lowLines, dayCount-1)
+        
+        if not na(tempLastHighLine)
+            line.delete(tempLastHighLine)
+        if not na(tempLastLowLine)
+            line.delete(tempLastLowLine)
+            
+        for i = 0 to dayCount - 2
+            j = dayCount - 2 - i
+            
+            array.set(prevHighs, j+1, array.get(prevHighs, j))
+            array.set(prevLows, j+1, array.get(prevLows, j))
+            array.set(highBars, j+1, array.get(highBars, j))
+            array.set(lowBars, j+1, array.get(lowBars, j))
+            array.set(highBroken, j+1, array.get(highBroken, j))
+            array.set(lowBroken, j+1, array.get(lowBroken, j))
+            array.set(highBreakBars, j+1, array.get(highBreakBars, j))
+            array.set(lowBreakBars, j+1, array.get(lowBreakBars, j))
+            array.set(highLines, j+1, array.get(highLines, j))
+            array.set(lowLines, j+1, array.get(lowLines, j))
+        
+        array.set(prevHighs, 0, dayHigh)
+        array.set(prevLows, 0, dayLow)
+        array.set(highBars, 0, dayHighBar)
+        array.set(lowBars, 0, dayLowBar)
+        array.set(highBroken, 0, false)
+        array.set(lowBroken, 0, false)
+        array.set(highBreakBars, 0, na)
+        array.set(lowBreakBars, 0, na)
+        array.set(highLines, 0, na)
+        array.set(lowLines, 0, na)
+        
+        for i = 0 to dayCount - 1
+            dayHigh := array.get(prevHighs, i)
+            dayLow := array.get(prevLows, i)
+            dayHighBar := array.get(highBars, i)
+            dayLowBar := array.get(lowBars, i)
+            
+            if not na(dayHigh) and not na(dayLow)
+                highColorWithTransparency = color.new(highColor, lineTransparency)
+                lowColorWithTransparency = color.new(lowColor, lineTransparency)
+                
+                if array.get(highBroken, i)
+                    highBreakBar = array.get(highBreakBars, i)
+                    if not na(highBreakBar)
+                        newHighLine = line.new(x1=dayHighBar, y1=dayHigh, x2=highBreakBar, y2=dayHigh, color=highColorWithTransparency, width=lineWidth, style=line.style_dashed)
+                        array.set(highLines, i, newHighLine)
+                else
+                    newHighLine = line.new(x1=dayHighBar, y1=dayHigh, x2=bar_index, y2=dayHigh, color=highColorWithTransparency, width=lineWidth, style=line.style_dashed)
+                    array.set(highLines, i, newHighLine)
+                
+                if array.get(lowBroken, i)
+                    lowBreakBar = array.get(lowBreakBars, i)
+                    if not na(lowBreakBar)
+                        newLowLine = line.new(x1=dayLowBar, y1=dayLow, x2=lowBreakBar, y2=dayLow, color=lowColorWithTransparency, width=lineWidth, style=line.style_dashed)
+                        array.set(lowLines, i, newLowLine)
+                else
+                    newLowLine = line.new(x1=dayLowBar, y1=dayLow, x2=bar_index, y2=dayLow, color=lowColorWithTransparency, width=lineWidth, style=line.style_dashed)
+                    array.set(lowLines, i, newLowLine)
+
+// === NY Session Logic ===
+if inNYSession
+    if na(nyStartBar) or timeframe.change("D")
+        nyStartBar := bar_index
+        nyHigh := high
+        nyLow := low
+        
+        currentBox := box.new(nyStartBar, nyHigh, bar_index, nyLow, 
+                         border_color=nyBoxColor, 
+                         border_width=boxLineWidth, 
+                         bgcolor=nyBoxColor)
+        array.push(nyBoxes, currentBox)
+        
+        if drawOnlyLatestBox and array.size(nyBoxes) > 1
+            box.delete(array.get(nyBoxes, 0))
+            array.remove(nyBoxes, 0)
+    
+    nyHigh := math.max(nyHigh, high)
+    nyLow := math.min(nyLow, low)
+    
+    if not na(currentBox)
+        box.set_top(currentBox, nyHigh)
+        box.set_bottom(currentBox, nyLow)
+        box.set_right(currentBox, bar_index)
+    
+    nyEndBar := bar_index
+
+if not inNYSession and not na(nyStartBar) and not na(currentBox)
+    nyStartBar := na
+    nyEndBar := na
+    nyHigh := na
+    nyLow := na
+    currentBox := na
+
+if barstate.isfirst
+    if array.size(nyBoxes) > 0
+        for i = 0 to array.size(nyBoxes) - 1
+            box.delete(array.get(nyBoxes, i))
+    array.clear(nyBoxes)
+    currentBox := na
+
+// === iFVGs Logic ===
+// Import required libraries
+import TFlab/OrderBlockDrawing_TradingFinder/3 as Drawing
+import TFlab/FVGDetectorLibrary/3 as FVG
+import TFlab/Dark_Light_Theme_TradingFinder_Switching_Colors_Library/1 as SC
+
+// Switching Colors Theme
+[CShowDeFVG] = SC.SwitchingColorMode(OCShowDeFVG, SCMode)
+[CShowSuFVG] = SC.SwitchingColorMode(OCShowSuFVG, SCMode)
+[CShowDeIFVG] = SC.SwitchingColorMode(OCShowDeIFVG, SCMode)
+[CShowSuIFVG] = SC.SwitchingColorMode(OCShowSuIFVG, SCMode)
+
+// FVG Detection
+[DConditionFVG, DDFVG, DPFVG, BarDFVG, SConditionFVG, SDFVG, SPFVG, BarSFVG] = FVG.FVGDetector(PFVGFilter ? 'On' : 'Off', PFVGFilterType, false, false)
+
+// Drawing
+[Alert_DFVG, Alert_DIFVG] = Drawing.OBDrawing('Demand', DConditionFVG, DDFVG, DPFVG, BarDFVG, true, FVGVaP, MLFVG, MLIFVG, ShowAllFVG, ShowAllIFVG, PShowDeFVG, PShowDeIFVG, CShowDeFVG, CShowDeIFVG)
+[Alert_SFVG, Alert_SIFVG] = Drawing.OBDrawing('Supply', SConditionFVG, SDFVG, SPFVG, BarSFVG, true, FVGVaP, MLFVG, MLIFVG, ShowAllFVG, ShowAllIFVG, PShowSuFVG, PShowSuIFVG, CShowSuFVG, CShowSuIFVG)
+
+// Calculate ATR for threshold
+atr = ta.atr(ATRPeriod)
+
+// Update the most recent FVGs when new ones are detected
+if SConditionFVG  // Bearish FVG detected (Supply)
+    bearishFVGHigh := SDFVG
+    bearishFVGLow := SPFVG
+    bearishFVGBarIndex := bar_index
+    lastBearishFVGHigh := SDFVG
+    lastBearishFVGLow := SPFVG
+
+if DConditionFVG  // Bullish FVG detected (Demand)
+    bullishFVGHigh := DDFVG
+    bullishFVGLow := DPFVG
+    bullishFVGBarIndex := bar_index
+    lastBullishFVGHigh := DDFVG
+    lastBullishFVGLow := DPFVG
+
+// Reset FVGs that are outside the lookback period
+if not na(bearishFVGBarIndex) and (bar_index - bearishFVGBarIndex) > FVGLookbackPeriod
+    bearishFVGHigh := na
+    bearishFVGLow := na
+    bearishFVGBarIndex := na
+
+if not na(bullishFVGBarIndex) and (bar_index - bullishFVGBarIndex) > FVGLookbackPeriod
+    bullishFVGHigh := na
+    bullishFVGLow := na
+    bullishFVGBarIndex := na
+
+// Detect when price closes above bearish FVG high or below bullish FVG low WITH ATR threshold
+bearishFVGBreak = not na(bearishFVGHigh) and close > (bearishFVGHigh + (atr * ATRMultiplier)) and close > open
+bullishFVGBreak = not na(bullishFVGLow) and close < (bullishFVGLow - (atr * ATRMultiplier)) and close < open
+
+// Plot triangles for FVG breaks
+plotshape(ShowTriangles and bearishFVGBreak, title="Bearish FVG Break", style=shape.triangleup, location=location.belowbar, color=BearishFVGBreakColor, size=size.small)
+plotshape(ShowTriangles and bullishFVGBreak, title="Bullish FVG Break", style=shape.triangledown, location=location.abovebar, color=BullishFVGBreakColor, size=size.small)
+
+// Strategy Entry Logic
+if waitingForBearishFVGInversion and bearishFVGBreak and tradesToday < maxTradesPerDay
+    float fvgMidpoint = (lastBearishFVGHigh + lastBearishFVGLow) / 2
+    float atr = ta.atr(atrPeriod)
+    float stopLoss = na
+    float takeProfit = na
+    float entryPrice = na
+    
+    if useMarketOrders
+        strategy.entry("Long", strategy.long, qty=contracts)
+        entryPrice := close  // Use current close price as entry
+        stopLoss := entryPrice - (atr * atrMultiplier)  // SL is entry minus ATR × multiplier
+        takeProfit := entryPrice + ((atr * atrMultiplier) * tpMultiplier)  // TP is entry plus (ATR × multiplier) × TP multiplier
+        strategy.exit("Long Exit", "Long", stop=stopLoss, limit=takeProfit, comment="Long Exit")
+    else
+        strategy.entry("Long", strategy.long, qty=contracts, limit=fvgMidpoint)
+        entryPrice := fvgMidpoint
+        stopLoss := fvgMidpoint - (atr * atrMultiplier)  // SL is FVG midpoint minus ATR × multiplier
+        takeProfit := fvgMidpoint + ((atr * atrMultiplier) * tpMultiplier)  // TP is FVG midpoint plus (ATR × multiplier) × TP multiplier
+        strategy.exit("Long Exit", "Long", stop=stopLoss, limit=takeProfit, comment="Long Exit")
+    
+    tradesToday := tradesToday + 1
+    waitingForBearishFVGInversion := false
+    longOrderBar := bar_index
+    longOrderPrice := entryPrice
+    // Draw SL and TP lines
+    if not na(longSL)
+        line.delete(longSL)
+    if not na(longTP)
+        line.delete(longTP)
+    longSL := line.new(bar_index, stopLoss, bar_index + 100, stopLoss, color=color.red, style=line.style_dotted, width=2)
+    longTP := line.new(bar_index, takeProfit, bar_index + 100, takeProfit, color=color.green, style=line.style_dotted, width=2)
+
+if waitingForBullishFVGInversion and bullishFVGBreak and tradesToday < maxTradesPerDay
+    float fvgMidpoint = (lastBullishFVGHigh + lastBullishFVGLow) / 2
+    float atr = ta.atr(atrPeriod)
+    float stopLoss = na
+    float takeProfit = na
+    float entryPrice = na
+    
+    if useMarketOrders
+        strategy.entry("Short", strategy.short, qty=contracts)
+        entryPrice := close  // Use current close price as entry
+        stopLoss := entryPrice + (atr * atrMultiplier)  // SL is entry plus ATR × multiplier
+        takeProfit := entryPrice - ((atr * atrMultiplier) * tpMultiplier)  // TP is entry minus (ATR × multiplier) × TP multiplier
+        strategy.exit("Short Exit", "Short", stop=stopLoss, limit=takeProfit, comment="Short Exit")
+    else
+        strategy.entry("Short", strategy.short, qty=contracts, limit=fvgMidpoint)
+        entryPrice := fvgMidpoint
+        stopLoss := fvgMidpoint + (atr * atrMultiplier)  // SL is FVG midpoint plus ATR × multiplier
+        takeProfit := fvgMidpoint - ((atr * atrMultiplier) * tpMultiplier)  // TP is FVG midpoint minus (ATR × multiplier) × TP multiplier
+        strategy.exit("Short Exit", "Short", stop=stopLoss, limit=takeProfit, comment="Short Exit")
+    
+    tradesToday := tradesToday + 1
+    waitingForBullishFVGInversion := false
+    shortOrderBar := bar_index
+    shortOrderPrice := entryPrice
+    // Draw SL and TP lines
+    if not na(shortSL)
+        line.delete(shortSL)
+    if not na(shortTP)
+        line.delete(shortTP)
+    shortSL := line.new(bar_index, stopLoss, bar_index + 100, stopLoss, color=color.red, style=line.style_dotted, width=2)
+    shortTP := line.new(bar_index, takeProfit, bar_index + 100, takeProfit, color=color.green, style=line.style_dotted, width=2)
+
+// New trading conditions for FVG formations after sweeps
+if waitingForBullishFVGAfterLowSweep and DConditionFVG and tradesToday < maxTradesPerDay
+    float fvgMidpoint = (DDFVG + DPFVG) / 2
+    float atr = ta.atr(atrPeriod)
+    float stopLoss = na
+    float takeProfit = na
+    float entryPrice = na
+    
+    if useMarketOrders
+        strategy.entry("Long After Low Sweep", strategy.long, qty=contracts)
+        entryPrice := close  // Use current close price as entry
+        stopLoss := entryPrice - (atr * atrMultiplier)  // SL is entry minus ATR × multiplier
+        takeProfit := entryPrice + ((atr * atrMultiplier) * tpMultiplier)  // TP is entry plus (ATR × multiplier) × TP multiplier
+        strategy.exit("Long After Low Sweep Exit", "Long After Low Sweep", stop=stopLoss, limit=takeProfit, comment="Long After Low Sweep Exit")
+    else
+        strategy.entry("Long After Low Sweep", strategy.long, qty=contracts, limit=fvgMidpoint)
+        entryPrice := fvgMidpoint
+        stopLoss := fvgMidpoint - (atr * atrMultiplier)  // SL is FVG midpoint minus ATR × multiplier
+        takeProfit := fvgMidpoint + ((atr * atrMultiplier) * tpMultiplier)  // TP is FVG midpoint plus (ATR × multiplier) × TP multiplier
+        strategy.exit("Long After Low Sweep Exit", "Long After Low Sweep", stop=stopLoss, limit=takeProfit, comment="Long After Low Sweep Exit")
+    
+    tradesToday := tradesToday + 1
+    waitingForBullishFVGAfterLowSweep := false
+    longOrderBar := bar_index
+    longOrderPrice := entryPrice
+    // Draw SL and TP lines
+    if not na(longSL)
+        line.delete(longSL)
+    if not na(longTP)
+        line.delete(longTP)
+    longSL := line.new(bar_index, stopLoss, bar_index + 100, stopLoss, color=color.red, style=line.style_dotted, width=2)
+    longTP := line.new(bar_index, takeProfit, bar_index + 100, takeProfit, color=color.green, style=line.style_dotted, width=2)
+
+if waitingForBearishFVGAfterHighSweep and SConditionFVG and tradesToday < maxTradesPerDay
+    float fvgMidpoint = (SDFVG + SPFVG) / 2
+    float atr = ta.atr(atrPeriod)
+    float stopLoss = na
+    float takeProfit = na
+    float entryPrice = na
+    
+    if useMarketOrders
+        strategy.entry("Short After High Sweep", strategy.short, qty=contracts)
+        entryPrice := close  // Use current close price as entry
+        stopLoss := entryPrice + (atr * atrMultiplier)  // SL is entry plus ATR × multiplier
+        takeProfit := entryPrice - ((atr * atrMultiplier) * tpMultiplier)  // TP is entry minus (ATR × multiplier) × TP multiplier
+        strategy.exit("Short After High Sweep Exit", "Short After High Sweep", stop=stopLoss, limit=takeProfit, comment="Short After High Sweep Exit")
+    else
+        strategy.entry("Short After High Sweep", strategy.short, qty=contracts, limit=fvgMidpoint)
+        entryPrice := fvgMidpoint
+        stopLoss := fvgMidpoint + (atr * atrMultiplier)  // SL is FVG midpoint plus ATR × multiplier
+        takeProfit := fvgMidpoint - ((atr * atrMultiplier) * tpMultiplier)  // TP is FVG midpoint minus (ATR × multiplier) × TP multiplier
+        strategy.exit("Short After High Sweep Exit", "Short After High Sweep", stop=stopLoss, limit=takeProfit, comment="Short After High Sweep Exit")
+    
+    tradesToday := tradesToday + 1
+    waitingForBearishFVGAfterHighSweep := false
+    shortOrderBar := bar_index
+    shortOrderPrice := entryPrice
+    // Draw SL and TP lines
+    if not na(shortSL)
+        line.delete(shortSL)
+    if not na(shortTP)
+        line.delete(shortTP)
+    shortSL := line.new(bar_index, stopLoss, bar_index + 100, stopLoss, color=color.red, style=line.style_dotted, width=2)
+    shortTP := line.new(bar_index, takeProfit, bar_index + 100, takeProfit, color=color.green, style=line.style_dotted, width=2)
+
+// Reset waiting flags on new day
+if newDay
+    waitingForBearishFVGInversion := false
+    waitingForBullishFVGInversion := false
+    waitingForBullishFVGAfterLowSweep := false
+    waitingForBearishFVGAfterHighSweep := false
+    if not na(longOrderBar)
+        strategy.cancel("Long")
+        strategy.cancel("Long Exit")
+        strategy.cancel("Long After Low Sweep")
+        strategy.cancel("Long After Low Sweep Exit")
+        longOrderBar := na
+        longOrderPrice := na
+        if not na(longSL)
+            line.delete(longSL)
+        if not na(longTP)
+            line.delete(longTP)
+    if not na(shortOrderBar)
+        strategy.cancel("Short")
+        strategy.cancel("Short Exit")
+        strategy.cancel("Short After High Sweep")
+        strategy.cancel("Short After High Sweep Exit")
+        shortOrderBar := na
+        shortOrderPrice := na
+        if not na(shortSL)
+            line.delete(shortSL)
+        if not na(shortTP)
+            line.delete(shortTP)
+
+// Reset the FVG after a break to avoid multiple signals
+if bearishFVGBreak
+    bearishFVGHigh := na
+    bearishFVGLow := na
+    bearishFVGBarIndex := na
+
+if bullishFVGBreak
+    bullishFVGHigh := na
+    bullishFVGLow := na
+    bullishFVGBarIndex := na 

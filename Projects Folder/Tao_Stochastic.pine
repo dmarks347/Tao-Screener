@@ -1,0 +1,83 @@
+//@version=5
+indicator("Tao Stochastic", shorttitle="Tao Stoch", overlay=false)
+
+// INPUTS ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+// Stochastic Settings
+int stoch_k = input.int(8, "Stochastic K", minval=1, group="Stochastic")
+int stoch_d = input.int(3, "Stochastic D", minval=1, group="Stochastic")
+int stoch_smooth = input.int(3, "Stochastic Smooth", minval=1, group="Stochastic")
+
+// Visual Settings
+color k_color = input.color(color.orange, "K Line Color", inline="colors", group="Visual")
+color d_color = input.color(color.purple, "D Line Color", inline="colors", group="Visual")
+color ob_color = input.color(color.red, "Overbought Color", inline="levels", group="Visual")
+color os_color = input.color(color.green, "Oversold Color", inline="levels", group="Visual")
+int line_width = input.int(2, "Line Width", minval=1, maxval=5, group="Visual")
+
+// Level Settings
+float ob_level = input.float(80, "Overbought Level", minval=50, maxval=100, group="Levels")
+float os_level = input.float(20, "Oversold Level", minval=0, maxval=50, group="Levels")
+bool show_levels = input.bool(true, "Show Levels", group="Levels")
+
+// }
+
+// CALCULATIONS ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+// Calculate Stochastic Oscillator
+float stoch_k_value = ta.stoch(close, high, low, stoch_k)
+float stoch_k_smooth = ta.sma(stoch_k_value, stoch_smooth)
+float stoch_d_value = ta.sma(stoch_k_smooth, stoch_d)
+
+// }
+
+// PLOTS ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+// Plot reference levels
+hline(50, "Midline", color=color.new(color.gray, 50), linestyle=hline.style_dashed)
+hline(show_levels ? ob_level : na, "Overbought", color=color.new(ob_color, 70), linestyle=hline.style_dashed)
+hline(show_levels ? os_level : na, "Oversold", color=color.new(os_color, 70), linestyle=hline.style_dashed)
+
+// Plot stochastic lines
+plot(stoch_k_smooth, color=k_color, linewidth=line_width, title="Stochastic %K")
+plot(stoch_d_value, color=d_color, linewidth=line_width, title="Stochastic %D")
+
+// Background coloring for extreme levels
+bgcolor(stoch_k_smooth > ob_level ? color.new(ob_color, 95) : na, title="Overbought Background")
+bgcolor(stoch_k_smooth < os_level ? color.new(os_color, 95) : na, title="Oversold Background")
+
+// }
+
+// ALERTS ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+// Crossover alerts
+bullish_cross = ta.crossover(stoch_k_smooth, stoch_d_value)
+bearish_cross = ta.crossunder(stoch_k_smooth, stoch_d_value)
+
+// Overbought/Oversold alerts
+entering_overbought = ta.crossover(stoch_k_smooth, ob_level)
+leaving_overbought = ta.crossunder(stoch_k_smooth, ob_level)
+entering_oversold = ta.crossunder(stoch_k_smooth, os_level)
+leaving_oversold = ta.crossover(stoch_k_smooth, os_level)
+
+// Plot signals
+plotshape(bullish_cross, style=shape.triangleup, location=location.bottom, color=color.green, size=size.small, title="Bullish Cross")
+plotshape(bearish_cross, style=shape.triangledown, location=location.top, color=color.red, size=size.small, title="Bearish Cross")
+
+// }
+
+// TABLE FOR INFO ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+if barstate.islast
+    var table info_table = table.new(position.top_right, 2, 4, bgcolor=color.white, border_width=1, frame_width=1, frame_color=color.black)
+    
+    table.cell(info_table, 0, 0, "Tao Stochastic", text_color=color.black, bgcolor=color.gray, text_size=size.normal)
+    table.cell(info_table, 1, 0, "Values", text_color=color.black, bgcolor=color.gray, text_size=size.normal)
+    
+    table.cell(info_table, 0, 1, "%K", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 1, str.tostring(stoch_k_smooth, "#.#"), text_color=k_color)
+    
+    table.cell(info_table, 0, 2, "%D", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 2, str.tostring(stoch_d_value, "#.#"), text_color=d_color)
+    
+    table.cell(info_table, 0, 3, "Signal", text_color=color.black, bgcolor=color.gray)
+    signal_text = stoch_k_smooth > ob_level ? "OVERBOUGHT" : stoch_k_smooth < os_level ? "OVERSOLD" : "NEUTRAL"
+    signal_color = stoch_k_smooth > ob_level ? ob_color : stoch_k_smooth < os_level ? os_color : color.gray
+    table.cell(info_table, 1, 3, signal_text, text_color=signal_color, text_size=size.normal)
+
+// } 

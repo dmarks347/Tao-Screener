@@ -1,0 +1,298 @@
+//@version=5
+strategy('Range Breakout Strategy', overlay=true, max_lines_count=4, max_labels_count=500, default_qty_type=strategy.fixed, default_qty_value=10000, currency=currency.USD)
+
+// INPUTS ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+int length = 100 // Length of the line extension
+float multi = input.float(4, 'Channel Width', step=0.1, tooltip="Multiplier for ATR-based channel width - higher values create wider channels")
+
+// Risk Management Inputs
+float sl_pips = input.float(20, "Stop Loss (Pips)", minval=1, maxval=500, step=1, tooltip="Fixed stop loss distance from entry price in pips", group="Risk Management")
+float trail_start_pips = input.float(25, "Trailing Start (Pips)", minval=1, maxval=500, step=1, tooltip="Profit in pips required before trailing stop activates", group="Risk Management")
+float trail_distance_pips = input.float(15, "Trailing Distance (Pips)", minval=1, maxval=500, step=1, tooltip="Distance in pips that trailing stop follows behind highest/lowest price", group="Risk Management")
+
+// Trade Direction Selection
+string trade_direction = input.string("Both Directions", "Trade Direction", options=["Long Only", "Short Only", "Both Directions"], tooltip="Select which trade directions to allow", group="Trade Direction")
+
+// RSI Filter 2 (User Configurable)
+bool rsi_filter_2_enable = input.bool(false, "Enable RSI Momentum Filter", tooltip="Enable RSI momentum filter based on crossover conditions", group="RSI Filter 2")
+float rsi_level_long = input.float(50, "RSI Level - Long", minval=0, maxval=100, step=1, tooltip="RSI level for long trades (current RSI > this, was < this in past Y bars)", group="RSI Filter 2")
+int rsi_lookback_long = input.int(3, "Lookback Bars - Long", minval=1, maxval=20, step=1, tooltip="Number of bars to look back for RSI condition", group="RSI Filter 2")
+float rsi_level_short = input.float(50, "RSI Level - Short", minval=0, maxval=100, step=1, tooltip="RSI level for short trades (current RSI < this, was > this in past Y bars)", group="RSI Filter 2")
+int rsi_lookback_short = input.int(3, "Lookback Bars - Short", minval=1, maxval=20, step=1, tooltip="Number of bars to look back for RSI condition", group="RSI Filter 2")
+
+// ADX Filter
+bool adx_filter_enable = input.bool(false, "Enable ADX Filter", tooltip="Enable ADX filter for trend strength", group="ADX Filter")
+float adx_threshold = input.float(25, "ADX Threshold", minval=1, maxval=100, step=1, tooltip="Minimum ADX value required for trades", group="ADX Filter")
+
+// Visual Settings
+color color1 = input.color(#1dac70, "Bullish Color", inline="col", group="Visual")
+color color3 = input.color(#df3a79, "Bearish Color", inline="col", group="Visual")
+bool gradient = input.bool(true, "Gradient", inline="ll", group="Visual")
+int transp = input.int(80, "Transparency", inline="ll", group="Visual")
+color color2 = chart.fg_color // Mid line color
+
+// Initialize Variables
+var float value = na
+var float value_upper = na
+var float value_lower = na
+var float value_upper_mid = na
+var float value_lower_mid = na
+var bool trend = false
+var count = 0
+
+// Trailing Stop Variables
+var float entry_price = na
+var float highest_since_entry = na
+var float lowest_since_entry = na
+var float trailing_stop_price = na
+var bool trailing_active = false
+
+// Filter Calculations
+float rsi = ta.rsi(close, 14)
+
+// ADX Calculation (Manual implementation)
+int adx_length = 14
+float tr = ta.tr
+float plus_dm = high - high[1] > low[1] - low ? math.max(high - high[1], 0) : 0
+float minus_dm = low[1] - low > high - high[1] ? math.max(low[1] - low, 0) : 0
+float plus_di = 100 * ta.rma(plus_dm, adx_length) / ta.rma(tr, adx_length)
+float minus_di = 100 * ta.rma(minus_dm, adx_length) / ta.rma(tr, adx_length)
+float dx = 100 * math.abs(plus_di - minus_di) / (plus_di + minus_di)
+float adx = ta.rma(dx, adx_length)
+
+// }
+
+// CALCULATIONS――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+
+float atr = ta.sma(ta.atr(200), 100) * multi // ATR-based channel width
+
+// Initialize channel values
+if bar_index == 301 or (na(value) and bar_index > 301)
+    value := hl2
+    value_upper := hl2 + atr
+    value_lower := hl2 - atr
+    value_upper_mid := math.avg(value, value_upper)
+    value_lower_mid := math.avg(value, value_lower)
+
+// Check for crossovers (only when channels are initialized)
+bool cross_upper = not na(value_upper) and ta.crossover(close, value_upper)
+bool cross_lower = not na(value_lower) and ta.crossunder(close, value_lower)
+
+// Count bars outside the channel
+if low > value_upper or high < value_lower
+    count := count + 1
+
+// Reset channel values on crossover or after 100 bars
+if cross_upper or cross_lower or count == 100
+    count := 0
+    value := hl2
+    value_upper := hl2 + atr
+    value_lower := hl2 - atr
+    value_upper_mid := math.avg(value, value_upper)
+    value_lower_mid := math.avg(value, value_lower)
+
+// Convert pips to price for USDJPY (1 pip = 0.01 for JPY pairs)
+float pip_value = 0.01
+float sl_price_distance = sl_pips * pip_value
+float trail_start_distance = trail_start_pips * pip_value
+float trail_distance = trail_distance_pips * pip_value
+
+// }
+
+// FILTER LOGIC ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+
+// RSI Filter 1 (Hard-coded - Always Active)
+bool rsi_filter_1_long = rsi <= 70
+bool rsi_filter_1_short = rsi >= 30
+
+// RSI Filter 2 (User Configurable)
+bool rsi_filter_2_long = true
+bool rsi_filter_2_short = true
+
+if rsi_filter_2_enable
+    // For long: Current RSI > X AND RSI was < X in past Y bars
+    bool rsi_was_below_long = false
+    for i = 1 to rsi_lookback_long
+        if rsi[i] < rsi_level_long
+            rsi_was_below_long := true
+            break
+    rsi_filter_2_long := rsi > rsi_level_long and rsi_was_below_long
+    
+    // For short: Current RSI < X AND RSI was > X in past Y bars  
+    bool rsi_was_above_short = false
+    for i = 1 to rsi_lookback_short
+        if rsi[i] > rsi_level_short
+            rsi_was_above_short := true
+            break
+    rsi_filter_2_short := rsi < rsi_level_short and rsi_was_above_short
+
+// ADX Filter
+bool adx_filter_long = adx_filter_enable ? adx > adx_threshold : true
+bool adx_filter_short = adx_filter_long
+
+// Trade Direction Filter
+bool direction_filter_long = trade_direction == "Long Only" or trade_direction == "Both Directions"
+bool direction_filter_short = trade_direction == "Short Only" or trade_direction == "Both Directions"
+
+// Combined Filter Logic
+bool all_filters_long = rsi_filter_1_long and rsi_filter_2_long and adx_filter_long and direction_filter_long
+bool all_filters_short = rsi_filter_1_short and rsi_filter_2_short and adx_filter_short and direction_filter_short
+
+// }
+
+// STRATEGY LOGIC ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+
+// Entry Conditions
+bool bullish_breakout = cross_upper
+bool bearish_breakout = cross_lower
+
+// Debug: Add alert for when signals are detected
+if bullish_breakout
+    alert("Bullish breakout detected at " + str.tostring(close))
+if bearish_breakout
+    alert("Bearish breakout detected at " + str.tostring(close))
+
+// Debug: Add labels for troubleshooting
+if not na(value_upper) and not na(value_lower)
+    if bar_index % 20 == 0  // Every 20 bars
+        label.new(bar_index, high, "CH: " + str.tostring(value_upper, "#.##") + "/" + str.tostring(value_lower, "#.##"), color=color.blue, style=label.style_label_down, size=size.small)
+    
+    // Debug crossover conditions
+    if ta.crossover(close, value_upper)
+        label.new(bar_index, high, "CLOSE>UP", color=color.green, style=label.style_label_up, size=size.small)
+    if ta.crossunder(close, value_lower)
+        label.new(bar_index, low, "CLOSE<LOW", color=color.red, style=label.style_label_down, size=size.small)
+
+// Long Entry
+if bullish_breakout and strategy.position_size <= 0 and all_filters_long
+    strategy.entry("Long", strategy.long)
+    entry_price := close
+    highest_since_entry := close
+    lowest_since_entry := close
+    trailing_stop_price := entry_price - sl_price_distance
+    trailing_active := false
+
+// Short Entry  
+if bearish_breakout and strategy.position_size >= 0 and all_filters_short
+    strategy.entry("Short", strategy.short)
+    entry_price := close
+    highest_since_entry := close
+    lowest_since_entry := close
+    trailing_stop_price := entry_price + sl_price_distance
+    trailing_active := false
+
+// Update highest/lowest since entry
+if strategy.position_size > 0  // Long position
+    highest_since_entry := math.max(highest_since_entry, high)
+    
+    // Check if trailing should activate
+    if not trailing_active and (close - entry_price) >= trail_start_distance
+        trailing_active := true
+        trailing_stop_price := highest_since_entry - trail_distance
+    
+    // Update trailing stop if active
+    if trailing_active
+        new_trailing_stop = highest_since_entry - trail_distance
+        trailing_stop_price := math.max(trailing_stop_price, new_trailing_stop)
+
+if strategy.position_size < 0  // Short position
+    lowest_since_entry := math.min(lowest_since_entry, low)
+    
+    // Check if trailing should activate
+    if not trailing_active and (entry_price - close) >= trail_start_distance
+        trailing_active := true
+        trailing_stop_price := lowest_since_entry + trail_distance
+    
+    // Update trailing stop if active
+    if trailing_active
+        new_trailing_stop = lowest_since_entry + trail_distance
+        trailing_stop_price := math.min(trailing_stop_price, new_trailing_stop)
+
+// Exit Logic
+if strategy.position_size > 0  // Long position
+    if trailing_active
+        strategy.exit("Long Exit", "Long", stop=trailing_stop_price)
+    else
+        strategy.exit("Long Exit", "Long", stop=entry_price - sl_price_distance)
+
+if strategy.position_size < 0  // Short position
+    if trailing_active
+        strategy.exit("Short Exit", "Short", stop=trailing_stop_price)
+    else
+        strategy.exit("Short Exit", "Short", stop=entry_price + sl_price_distance)
+
+// }
+
+// PLOT ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+// Plot and fill lines
+p1 = plot(value_upper != value_upper[1] ? na : value_upper, color=color1, linewidth=1, style=plot.style_linebr)
+p0 = plot(bar_index % 2 == 0 ? value : na, color=color2, style=plot.style_linebr)
+p2 = plot(value_lower != value_lower[1] ? na : value_lower, color=color3, linewidth=1, style=plot.style_linebr)
+
+upper_mid = math.avg(value_upper, value)
+lower_mid = math.avg(value_lower, value)
+
+p01 = plot(upper_mid != upper_mid[1] ? na : upper_mid, color=color.new(color2, 50), style=plot.style_linebr)
+p02 = plot(lower_mid != lower_mid[1] ? na : lower_mid, color=color.new(color2, 50), style=plot.style_linebr)
+
+fill(p1, p01, value_upper, value, color.new(value_upper != value_upper[1] ? na : color1, transp), color.new(value_upper != value_upper[1] ? na : color1, gradient ? 100 : transp))
+fill(p2, p02, value, value_lower, color.new(value_upper != value_upper[1] ? na : color3, gradient ? 100 : transp), color.new(value_upper != value_upper[1] ? na : color3, transp))
+
+// Plot breakout signals only
+if bullish_breakout
+    trend := true
+    label.new(bar_index, value_upper, text='⦿ LONG', textcolor=color1, style=label.style_label_up, color=color(na), size=size.normal, tooltip="Bullish Breakout Entry")
+
+if bearish_breakout
+    trend := false
+    label.new(bar_index, value_lower, text='⦿ SHORT', textcolor=color3, style=label.style_label_down, color=color(na), size=size.normal, tooltip="Bearish Breakout Entry")
+
+// Plot trailing stop line when active
+plot(trailing_active and strategy.position_size != 0 ? trailing_stop_price : na, color=color.yellow, linewidth=2, style=plot.style_linebr, title="Trailing Stop")
+
+// }
+
+// TABLE FOR TRADE INFO ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+if barstate.islast
+    var table info_table = table.new(position.top_right, 2, 12, bgcolor=color.white, border_width=1)
+    table.cell(info_table, 0, 0, "Position", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 0, strategy.position_size > 0 ? "LONG" : strategy.position_size < 0 ? "SHORT" : "NONE", text_color=color.black)
+    
+    table.cell(info_table, 0, 1, "Entry Price", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 1, strategy.position_size != 0 ? str.tostring(entry_price, "#.###") : "N/A", text_color=color.black)
+    
+    table.cell(info_table, 0, 2, "Current P&L", text_color=color.black, bgcolor=color.gray)
+    current_pl = strategy.position_size > 0 ? (close - entry_price) / pip_value : strategy.position_size < 0 ? (entry_price - close) / pip_value : 0
+    table.cell(info_table, 1, 2, strategy.position_size != 0 ? str.tostring(current_pl, "#.#") + " pips" : "N/A", text_color=color.black)
+    
+    table.cell(info_table, 0, 3, "Trailing Active", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 3, trailing_active ? "YES" : "NO", text_color=color.black)
+    
+    table.cell(info_table, 0, 4, "Stop Price", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 4, strategy.position_size != 0 ? str.tostring(trailing_stop_price, "#.###") : "N/A", text_color=color.black)
+    
+    table.cell(info_table, 0, 5, "Risk (pips)", text_color=color.black, bgcolor=color.gray)
+    risk_pips = strategy.position_size > 0 ? (entry_price - trailing_stop_price) / pip_value : strategy.position_size < 0 ? (trailing_stop_price - entry_price) / pip_value : 0
+    table.cell(info_table, 1, 5, strategy.position_size != 0 ? str.tostring(risk_pips, "#.#") + " pips" : "N/A", text_color=color.black)
+    
+    // Debug info
+    table.cell(info_table, 0, 6, "Upper Channel", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 6, not na(value_upper) ? str.tostring(value_upper, "#.###") : "N/A", text_color=color.black)
+    
+    table.cell(info_table, 0, 7, "Lower Channel", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 7, not na(value_lower) ? str.tostring(value_lower, "#.###") : "N/A", text_color=color.black)
+    
+    // Filter Status
+    table.cell(info_table, 0, 8, "RSI", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 8, str.tostring(rsi, "#.#"), text_color=color.black)
+    
+    table.cell(info_table, 0, 9, "ADX", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 9, str.tostring(adx, "#.#"), text_color=color.black)
+    
+    table.cell(info_table, 0, 10, "Long Filters", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 10, all_filters_long ? "✓ PASS" : "✗ FAIL", text_color=all_filters_long ? color.green : color.red)
+    
+    table.cell(info_table, 0, 11, "Short Filters", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 11, all_filters_short ? "✓ PASS" : "✗ FAIL", text_color=all_filters_short ? color.green : color.red)
+
+// } 

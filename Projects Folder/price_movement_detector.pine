@@ -1,0 +1,68 @@
+//@version=5
+indicator("Price Movement Detector", overlay=true)
+
+// User inputs
+pct_threshold = input.float(1.0, "Price Movement Threshold (%)", minval=0.1, maxval=10.0, step=0.1)
+time_window = input.int(60, "Time Window (minutes)", minval=1, maxval=1440, step=1)
+
+// Get current chart timeframe in minutes and calculate bars
+current_tf = timeframe.in_minutes()
+bars_in_window = math.round(time_window / current_tf)
+
+// Calculate price changes
+price_change = ((close - close[bars_in_window]) / close[bars_in_window]) * 100
+
+// Variables for box and arrow plotting
+var box last_box = na
+var label last_arrow = na
+var label last_text = na
+
+// Delete previous drawings
+if not na(last_box)
+    box.delete(last_box)
+if not na(last_arrow)
+    label.delete(last_arrow)
+if not na(last_text)
+    label.delete(last_text)
+
+// Check for significant price movements
+if math.abs(price_change) >= pct_threshold
+    // Calculate box boundaries
+    high_point = ta.highest(high, bars_in_window)
+    low_point = ta.lowest(low, bars_in_window)
+    
+    // Draw box
+    last_box := box.new(
+        bar_index[bars_in_window - 1], 
+        high_point, 
+        bar_index, 
+        low_point, 
+        color.yellow, 
+        2, 
+        bgcolor = color.new(color.yellow, 90))
+    
+    // Draw arrow
+    is_up_move = price_change > 0
+    arrow_color = is_up_move ? color.green : color.red
+    arrow_style = is_up_move ? label.style_arrowup : label.style_arrowdown
+    arrow_y = is_up_move ? high_point : low_point
+    arrow_pos = is_up_move ? yloc.abovebar : yloc.belowbar
+    
+    last_arrow := label.new(
+        bar_index - math.round(bars_in_window/2),
+        arrow_y,
+        "",
+        color = arrow_color,
+        style = arrow_style,
+        yloc = arrow_pos,
+        size = size.large)
+    
+    // Display percentage text
+    last_text := label.new(
+        bar_index,
+        high_point,
+        str.tostring(price_change, "#.##") + "% (" + str.tostring(time_window) + "min)",
+        color = color.new(color.white, 100),
+        textcolor = arrow_color,
+        style = label.style_label_down,
+        yloc = yloc.abovebar) 
