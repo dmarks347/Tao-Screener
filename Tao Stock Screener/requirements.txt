@@ -9,7 +9,7 @@ requests>=2.31.0
 
 # Technical analysis
 # TA-Lib>=0.4.25  # Commented out - requires C++ build tools on Windows
-pandas-ta>=0.3.14b
+pandas-ta>=0.3.14
 
 # Visualization
 plotly>=5.15.0
