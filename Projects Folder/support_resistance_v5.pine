@@ -1,0 +1,59 @@
+//@version=5
+indicator("Support and Resistance", overlay=true)
+
+// Input parameters
+left = input.int(30, title="Left Bars")
+right = input.int(30, title="Right Bars")
+
+// Calculate pivot highs and lows
+hih = ta.pivothigh(high, left, right)
+lol = ta.pivotlow(low, left, right)
+
+// Variables to store line objects
+var line[] resistance_lines = array.new<line>()
+var line[] support_lines = array.new<line>()
+
+// Time threshold (17.5 hours in milliseconds)
+time_threshold = 17.5 * 60 * 60 * 1000
+
+// When a new pivot high is found
+if not na(hih)
+    // Create a new resistance line
+    new_line = line.new(bar_index - right, high[right], bar_index + 500, high[right], 
+                        color=color.rgb(0, 206, 209), width=1, extend=extend.right)
+    array.push(resistance_lines, new_line)
+    
+    // Keep only the last 2 resistance lines
+    while array.size(resistance_lines) > 2
+        old_line = array.shift(resistance_lines)
+        line.delete(old_line)
+
+// When a new pivot low is found  
+if not na(lol)
+    // Create a new support line
+    new_line = line.new(bar_index - right, low[right], bar_index + 500, low[right], 
+                        color=color.rgb(220, 20, 60), width=1, extend=extend.right)
+    array.push(support_lines, new_line)
+    
+    // Keep only the last 2 support lines
+    while array.size(support_lines) > 2
+        old_line = array.shift(support_lines)
+        line.delete(old_line)
+
+// Clean up old resistance lines (older than 36 hours)
+if array.size(resistance_lines) > 0
+    for i = array.size(resistance_lines) - 1 to 0
+        current_line = array.get(resistance_lines, i)
+        line_time = line.get_x1(current_line)
+        if bar_index - line_time > (time_threshold / (timeframe.in_seconds() * 1000))
+            line.delete(current_line)
+            array.remove(resistance_lines, i)
+
+// Clean up old support lines (older than 36 hours)
+if array.size(support_lines) > 0
+    for i = array.size(support_lines) - 1 to 0
+        current_line = array.get(support_lines, i)
+        line_time = line.get_x1(current_line)
+        if bar_index - line_time > (time_threshold / (timeframe.in_seconds() * 1000))
+            line.delete(current_line)
+            array.remove(support_lines, i)

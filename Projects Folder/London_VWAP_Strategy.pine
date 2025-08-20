@@ -1,0 +1,258 @@
+//@version=5
+strategy("London VWAP Reversal Strategy", overlay=true, max_lines_count=20, max_labels_count=10)
+
+// === INPUTS ===
+// London Session Settings
+londonStartH = input.int(3, "London Start Hour (ET)", minval=0, maxval=23, group="London Session")
+londonStartM = input.int(0, "London Start Minute (ET)", minval=0, maxval=59, group="London Session")
+londonEndH   = input.int(12, "London End Hour (ET)", minval=0, maxval=23, group="London Session")
+londonEndM   = input.int(0, "London End Minute (ET)", minval=0, maxval=59, group="London Session")
+
+// Strategy Settings
+breakoutTicks = input.int(20, "Breakout Distance (ticks)", minval=1, tooltip="Distance in ticks for London high/low break (5 points = 20 ticks)", group="Strategy Settings")
+vwapDistanceTicks = input.int(10, "VWAP Distance (ticks)", minval=1, tooltip="Minimum distance from VWAP for entry", group="Strategy Settings")
+stopLossTicks = input.int(15, "Stop Loss (ticks)", minval=1, tooltip="Stop loss distance in ticks from previous candle high/low", group="Strategy Settings")
+trailingStopTicks = input.int(10, "Trailing Stop (ticks)", minval=1, tooltip="Trailing stop distance when price touches VWAP", group="Strategy Settings")
+
+// Time Settings
+entryStopHour = input.int(13, "Stop Entry Hour (ET)", minval=0, maxval=23, group="Time Settings")
+entryStopMinute = input.int(0, "Stop Entry Minute (ET)", minval=0, maxval=59, group="Time Settings")
+
+// Display Settings
+showLondonLines = input.bool(true, "Show London High/Low Lines", group="Display")
+showVWAP = input.bool(true, "Show VWAP", group="Display")
+londonColor = input.color(color.yellow, "London Session Color", group="Display")
+
+// === TIMEZONE AND TIME FUNCTIONS ===
+// Check if current time is in London session (using ET directly)
+inLondonSession() =>
+    sessStart = londonStartH * 60 + londonStartM
+    sessEnd = londonEndH * 60 + londonEndM
+    currentTime = hour * 60 + minute
+    sessStart < sessEnd ? (currentTime >= sessStart and currentTime < sessEnd) : (currentTime >= sessStart or currentTime < sessEnd)
+
+// Check if we can start looking for trades (after London session ends)
+canTrade() =>
+    currentTime = hour * 60 + minute
+    tradeStartTime = londonEndH * 60 + londonEndM
+    stopTime = entryStopHour * 60 + entryStopMinute
+    currentTime >= tradeStartTime and currentTime < stopTime
+
+// === VWAP CALCULATION (Resets at 17:00 ET) ===
+vwapResetTime() =>
+    hour == 17 and minute == 0  // 17:00 ET
+
+var float vwapSum = 0.0
+var float volumeSum = 0.0
+var float sessionVWAP = na
+
+if vwapResetTime() or (na(sessionVWAP) and not na(volume))
+    vwapSum := 0.0
+    volumeSum := 0.0
+
+if not na(volume) and volume > 0
+    vwapSum += (high + low + close) / 3 * volume
+    volumeSum += volume
+    sessionVWAP := vwapSum / volumeSum
+
+plot(showVWAP ? sessionVWAP : na, "Session VWAP (Resets at 17:00 ET)", color=color.purple, linewidth=2)
+
+// === LONDON SESSION LOGIC ===
+var float londonHigh = na
+var float londonLow = na
+var int londonStartBar = na
+var bool londonSessionActive = false
+var bool tradeToday = false
+var bool londonHighBrokenToday = false
+var bool londonLowBrokenToday = false
+var line londonHighLine = na
+var line londonLowLine = na
+
+// Detect new London session
+newLondonSession = not londonSessionActive and inLondonSession()
+if newLondonSession
+    // Delete old session lines before creating new ones
+    if not na(londonHighLine)
+        line.delete(londonHighLine)
+    if not na(londonLowLine)
+        line.delete(londonLowLine)
+    
+    londonHigh := high
+    londonLow := low
+    londonStartBar := bar_index
+    londonSessionActive := true
+    tradeToday := false  // Reset daily trade flag
+    londonHighBrokenToday := false
+    londonLowBrokenToday := false
+
+// Update London high/low during session
+if londonSessionActive and inLondonSession()
+    londonHigh := math.max(londonHigh, high)
+    londonLow := math.min(londonLow, low)
+
+// End London session and draw lines once
+endLondonSession = londonSessionActive and not inLondonSession()
+if endLondonSession
+    londonSessionActive := false
+    // Draw London session lines when session ends
+    if showLondonLines and not na(londonHigh) and not na(londonLow) and not na(londonStartBar)
+        londonHighLine := line.new(londonStartBar, londonHigh, bar_index, londonHigh, color=londonColor, width=2, extend=extend.right)
+        londonLowLine := line.new(londonStartBar, londonLow, bar_index, londonLow, color=londonColor, width=2, extend=extend.right)
+
+// Update existing lines during and after London session for debugging visibility
+if showLondonLines and not na(londonHigh) and not na(londonLow) and not na(londonStartBar)
+    // If we have lines, update their end points for real-time visibility
+    if not na(londonHighLine)
+        line.set_x2(londonHighLine, bar_index)
+    if not na(londonLowLine)
+        line.set_x2(londonLowLine, bar_index)
+    
+    // If session just ended and we don't have lines yet, create them
+    if not londonSessionActive and na(londonHighLine) 
+        londonHighLine := line.new(londonStartBar, londonHigh, bar_index, londonHigh, color=londonColor, width=2, extend=extend.right)
+        londonLowLine := line.new(londonStartBar, londonLow, bar_index, londonLow, color=londonColor, width=2, extend=extend.right)
+
+// === ENTRY CONDITIONS ===
+// Convert ticks to price points
+tickSize = syminfo.mintick
+breakoutDistance = breakoutTicks * tickSize
+vwapDistance = vwapDistanceTicks * tickSize
+stopLossDistance = stopLossTicks * tickSize
+
+// Track when London levels are broken (anytime after London session establishes levels)
+if not na(londonHigh) and not londonHighBrokenToday and not londonSessionActive
+    if close > londonHigh + breakoutDistance
+        londonHighBrokenToday := true
+
+if not na(londonLow) and not londonLowBrokenToday and not londonSessionActive
+    if close < londonLow - breakoutDistance
+        londonLowBrokenToday := true
+
+// Distance from VWAP conditions
+priceAboveVWAP = not na(sessionVWAP) and close > sessionVWAP + vwapDistance
+priceBelowVWAP = not na(sessionVWAP) and close < sessionVWAP - vwapDistance
+
+// Candle type identification
+bearishCandle = close < open
+bullishCandle = close > open
+
+// Entry signals - look for next qualifying candle after London break
+shortSignal = londonHighBrokenToday and priceAboveVWAP and bearishCandle and not tradeToday and canTrade()
+longSignal = londonLowBrokenToday and priceBelowVWAP and bullishCandle and not tradeToday and canTrade()
+
+// === TRADE EXECUTION ===
+var float entryPrice = na
+var float stopLoss = na
+var bool trailingActive = false
+var float trailingStop = na
+
+// Short Entry
+if shortSignal and strategy.position_size == 0
+    entryPrice := close
+    stopLoss := high[1] + stopLossDistance  // SL above previous candle high
+    strategy.entry("Short", strategy.short)
+    tradeToday := true
+    trailingActive := false
+    label.new(bar_index, high, "SHORT", color=color.red, style=label.style_label_down, textcolor=color.white)
+
+// Long Entry  
+if longSignal and strategy.position_size == 0
+    entryPrice := close
+    stopLoss := low[1] - stopLossDistance   // SL below previous candle low
+    strategy.entry("Long", strategy.long)
+    tradeToday := true
+    trailingActive := false
+    label.new(bar_index, low, "LONG", color=color.green, style=label.style_label_up, textcolor=color.white)
+
+// === EXIT LOGIC ===
+// Stop Loss
+if strategy.position_size != 0 and not na(stopLoss)
+    if strategy.position_size > 0  // Long position
+        strategy.exit("Long SL", "Long", stop=stopLoss)
+    else  // Short position
+        strategy.exit("Short SL", "Short", stop=stopLoss)
+
+// Trailing Stop Activation (when price touches VWAP)
+if strategy.position_size > 0 and not trailingActive and not na(sessionVWAP)
+    if math.abs(close - sessionVWAP) <= tickSize  // Price touches VWAP
+        trailingActive := true
+        trailingStop := close - (trailingStopTicks * tickSize)
+
+if strategy.position_size < 0 and not trailingActive and not na(sessionVWAP)
+    if math.abs(close - sessionVWAP) <= tickSize  // Price touches VWAP
+        trailingActive := true
+        trailingStop := close + (trailingStopTicks * tickSize)
+
+// Update trailing stop
+if trailingActive and strategy.position_size > 0
+    newTrailingStop = close - (trailingStopTicks * tickSize)
+    trailingStop := math.max(trailingStop, newTrailingStop)
+    strategy.exit("Long Trail", "Long", stop=trailingStop)
+
+if trailingActive and strategy.position_size < 0
+    newTrailingStop = close + (trailingStopTicks * tickSize)
+    trailingStop := math.min(trailingStop, newTrailingStop)
+    strategy.exit("Short Trail", "Short", stop=trailingStop)
+
+// Reset variables when position closes
+if strategy.position_size == 0 and strategy.position_size[1] != 0
+    entryPrice := na
+    stopLoss := na
+    trailingActive := false
+    trailingStop := na
+
+// === DEBUG INFO ===
+// Visual indicator for trailing stop
+plotchar(trailingActive, "Trailing Stop Active", "T", location.top, color.orange, size=size.tiny)
+
+// Debug table - Show debug info when London levels are broken or during active trading
+if (londonHighBrokenToday or londonLowBrokenToday) and canTrade()
+    var table debugTable = table.new(position.top_right, 2, 20, bgcolor=color.white, border_width=1)
+    table.cell(debugTable, 0, 0, "Current Time", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 0, str.tostring(hour) + ":" + str.tostring(minute), text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 1, "Current Price", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 1, str.tostring(close, "#.##"), text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 2, "London Session Active", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 2, londonSessionActive ? "YES" : "NO", text_color=londonSessionActive ? color.green : color.red, text_size=size.small)
+    table.cell(debugTable, 0, 3, "London Start Bar", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 3, not na(londonStartBar) ? str.tostring(londonStartBar) : "N/A", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 4, "Current Bar", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 4, str.tostring(bar_index), text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 5, "London High", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 5, str.tostring(londonHigh, "#.##"), text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 6, "London Low", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 6, str.tostring(londonLow, "#.##"), text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 7, "Breakout Distance", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 7, str.tostring(breakoutDistance, "#.##"), text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 8, "High Breakout Level", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 8, str.tostring(londonHigh + breakoutDistance, "#.##"), text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 9, "Low Breakout Level", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 9, str.tostring(londonLow - breakoutDistance, "#.##"), text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 10, "London High Broken", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 10, londonHighBrokenToday ? "YES" : "NO", text_color=londonHighBrokenToday ? color.green : color.red, text_size=size.small)
+    table.cell(debugTable, 0, 11, "London Low Broken", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 11, londonLowBrokenToday ? "YES" : "NO", text_color=londonLowBrokenToday ? color.green : color.red, text_size=size.small)
+    table.cell(debugTable, 0, 12, "VWAP", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 12, str.tostring(sessionVWAP, "#.##"), text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 13, "VWAP Distance", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 13, str.tostring(vwapDistance, "#.##"), text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 14, "Price Above VWAP", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 14, priceAboveVWAP ? "YES" : "NO", text_color=priceAboveVWAP ? color.green : color.red, text_size=size.small)
+    table.cell(debugTable, 0, 15, "Price Below VWAP", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 15, priceBelowVWAP ? "YES" : "NO", text_color=priceBelowVWAP ? color.green : color.red, text_size=size.small)
+    table.cell(debugTable, 0, 16, "Bearish Candle", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 16, bearishCandle ? "YES" : "NO", text_color=bearishCandle ? color.green : color.red, text_size=size.small)
+    table.cell(debugTable, 0, 17, "Bullish Candle", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 17, bullishCandle ? "YES" : "NO", text_color=bullishCandle ? color.green : color.red, text_size=size.small)
+    table.cell(debugTable, 0, 18, "Trade Today", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 18, tradeToday ? "YES" : "NO", text_color=tradeToday ? color.red : color.green, text_size=size.small)
+    table.cell(debugTable, 0, 19, "Signal Status", text_color=color.black, text_size=size.small)
+    signalText = shortSignal ? "SHORT SIGNAL" : (longSignal ? "LONG SIGNAL" : "NO SIGNAL")
+    signalColor = shortSignal ? color.red : (longSignal ? color.green : color.gray)
+    table.cell(debugTable, 1, 19, signalText, text_color=signalColor, text_size=size.small)
+
+// Background color for London session
+bgcolor(inLondonSession() ? color.new(londonColor, 95) : na, title="London Session Background")
+
+// Trading window background (after London session ends)
+bgcolor(canTrade() ? color.new(color.blue, 98) : na, title="Trading Window") 

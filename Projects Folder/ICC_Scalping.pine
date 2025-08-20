@@ -1,0 +1,444 @@
+//@version=5
+strategy("ICC Scalping", overlay=true)
+
+// Force 5-minute timeframe
+if timeframe.period != "5"
+    runtime.error("This strategy is designed to work only on 5-minute timeframe. Please switch to 5-minute chart.")
+
+// Input parameters
+left = input.int(30, title="Left Bars", tooltip="Number of bars to look back when identifying pivot highs/lows for support and resistance levels. Higher values create more significant S/R levels but may miss shorter-term pivots.")
+right = input.int(30, title="Right Bars", tooltip="Number of bars to look forward when confirming pivot highs/lows for support and resistance levels. Higher values ensure stronger pivot confirmation but create more lag in level identification.")
+
+// Line Color Settings
+resistance_color = input.color(color.rgb(0, 206, 209), title="Resistance Line Color", group="Line Colors", tooltip="Color for support and resistance lines used in EM1/EM2 return-to-level strategies.")
+support_color = input.color(color.rgb(220, 20, 60), title="Support Line Color", group="Line Colors", tooltip="Color for support and resistance lines used in EM1/EM2 return-to-level strategies.")
+bo_resistance_color = input.color(color.yellow, title="Breakout Resistance Color", group="Line Colors", tooltip="Color for breakout resistance lines used in EM3/EM4 breakout strategies.")
+bo_support_color = input.color(color.white, title="Breakout Support Color", group="Line Colors", tooltip="Color for breakout support lines used in EM3/EM4 breakout strategies.")
+
+// Return to S&R Level Entry Models
+em1_enabled = input.bool(true, title="Enable Long Entry", group="Return to S&R Level", tooltip="Enable/disable long entry trades for EM1. When enabled, the strategy will take long positions when price returns to test resistance levels after being above the trigger distance at 9:25 ET.")
+em2_enabled = input.bool(true, title="Enable Short Entry", group="Return to S&R Level", tooltip="Enable/disable short entry trades for EM2. When enabled, the strategy will take short positions when price returns to test support levels after being below the trigger distance at 9:25 ET.")
+em_entry_type = input.string("Touch", title="Entry Type", options=["Touch", "Close"], group="Return to S&R Level", tooltip="Touch: Price only needs to touch the S/R level to trigger entry. Close: Long entries require close below resistance then close above resistance. Short entries require close above support then close below support.")
+em_trigger_ticks = input.int(100, title="Trigger Distance (ticks)", group="Return to S&R Level", tooltip="Number of ticks price must be above resistance (long) or below support (short) to trigger entry conditions")
+em_sl_ticks = input.int(80, title="Stop Loss (ticks)", options=[40, 80, 120], group="Return to S&R Level", tooltip="Stop loss distance in ticks from the S/R level. For longs: placed below resistance level. For shorts: placed above support level. 1 tick = 0.25 points for MNQ.")
+em_tp_ticks = input.int(200, title="Take Profit (ticks)", options=[200, 260, 320], group="Return to S&R Level", tooltip="Take profit distance in ticks from the S/R level. For longs: placed above resistance level. For shorts: placed below support level. 1 tick = 0.25 points for MNQ.")
+
+// Global Trade Settings
+trade_cutoff_time = input.string("14:00", title="Trade Cutoff Time (ET)", group="Global Settings", tooltip="No trades will be taken after this time (applies to all entry models)")
+
+// Breakout from S&R Entry Models
+em3_enabled = input.bool(true, title="Enable Long Breakout", group="Breakout from S&R", tooltip="Enable/disable long breakout trades for EM3. When enabled, the strategy will take long positions after price breaks above resistance, pulls back, then breaks out again.")
+em4_enabled = input.bool(true, title="Enable Short Breakout", group="Breakout from S&R", tooltip="Enable/disable short breakout trades for EM4. When enabled, the strategy will take short positions after price breaks below support, pulls back, then breaks down again.")
+breakout_entry_type = input.string("Touch", title="Breakout Entry Type", options=["Touch", "Close"], group="Breakout from S&R", tooltip="Touch: Buy/Sell stop placed at S/R level after pullback. Close: Enter at candle close when price breaks S/R again after pullback.")
+breakout_trigger_ticks = input.int(100, title="Breakout Trigger Distance (ticks)", group="Breakout from S&R", tooltip="Number of ticks price must breakout above resistance (long) or below support (short) to trigger breakout conditions")
+breakout_sl_ticks = input.int(80, title="Breakout Stop Loss (ticks)", options=[40, 80, 120], group="Breakout from S&R", tooltip="Stop loss distance in ticks from the breakout S/R level. For long breakouts: placed below resistance. For short breakouts: placed above support. 1 tick = 0.25 points for MNQ.")
+breakout_tp_ticks = input.int(200, title="Breakout Take Profit (ticks)", options=[200, 260, 320], group="Breakout from S&R", tooltip="Take profit distance in ticks from the breakout S/R level. For long breakouts: placed above resistance. For short breakouts: placed below support. 1 tick = 0.25 points for MNQ.")
+breakout_left = input.int(10, title="Breakout Left Bars", group="Breakout from S&R", tooltip="Number of bars to look back when identifying pivot highs/lows for breakout S/R levels. Lower values create more responsive breakout levels that capture shorter-term pivots.")
+breakout_right = input.int(10, title="Breakout Right Bars", group="Breakout from S&R", tooltip="Number of bars to look forward when confirming pivot highs/lows for breakout S/R levels. Lower values provide faster breakout level identification with less confirmation lag.")
+
+// Calculate pivot highs and lows for EM1/EM2
+hih = ta.pivothigh(high, left, right)
+lol = ta.pivotlow(low, left, right)
+
+// Calculate pivot highs and lows for EM3/EM4 (breakout)
+bo_hih = ta.pivothigh(high, breakout_left, breakout_right)
+bo_lol = ta.pivotlow(low, breakout_left, breakout_right)
+
+// Variables to store line objects for EM1/EM2
+var line[] resistance_lines = array.new<line>()
+var line[] support_lines = array.new<line>()
+
+// Variables to store line objects for EM3/EM4 (breakout)
+var line[] bo_resistance_lines = array.new<line>()
+var line[] bo_support_lines = array.new<line>()
+
+// Time threshold (17.5 hours in milliseconds)
+time_threshold = 17.5 * 60 * 60 * 1000
+
+// 9:25 ET time condition
+is_925_et = hour(time, "America/New_York") == 9 and minute(time, "America/New_York") == 25
+
+// Variables to store identified levels at 9:25 ET for EM1/EM2
+var float identified_lowest_resistance = na
+var float identified_highest_support = na
+
+// Variables to store identified levels at 9:25 ET for EM3/EM4 (breakout)
+var float bo_lowest_resistance = na
+var float bo_highest_support = na
+
+// Trade Management Variables (shared)
+var bool em_trade_taken_today = false
+
+// EM1 Specific Variables
+var bool em1_conditions_met = false
+var bool em1_waiting_for_close_above = false
+var float em1_sl_price = na
+var float em1_tp_price = na
+
+// EM2 Specific Variables
+var bool em2_conditions_met = false
+var bool em2_waiting_for_close_below = false
+var float em2_sl_price = na
+var float em2_tp_price = na
+
+// Breakout Setup Variables (shared between EM3 and EM4)
+var bool breakout_setup_valid = false
+var float breakout_open_price = na
+
+// EM3 Specific Variables (Long Breakout)
+var bool em3_breakout_occurred = false
+var bool em3_pullback_occurred = false
+var bool em3_waiting_for_rebreak = false
+var float em3_sl_price = na
+var float em3_tp_price = na
+
+// EM4 Specific Variables (Short Breakout)
+var bool em4_breakout_occurred = false
+var bool em4_pullback_occurred = false
+var bool em4_waiting_for_rebreak = false
+var float em4_sl_price = na
+var float em4_tp_price = na
+
+// MNQ tick conversion (1 point = 4 ticks, so 1 tick = 0.25 points)
+tick_size = 0.25
+em_trigger_distance = em_trigger_ticks * tick_size
+breakout_trigger_distance = breakout_trigger_ticks * tick_size
+
+// When a new pivot high is found
+if not na(hih)
+    // Create a new resistance line
+    new_line = line.new(bar_index - right, high[right], bar_index + 500, high[right], color=resistance_color, width=1, extend=extend.right)
+    array.push(resistance_lines, new_line)
+    
+    // Keep only the last 2 resistance lines
+    while array.size(resistance_lines) > 2
+        old_line = array.shift(resistance_lines)
+        line.delete(old_line)
+
+// When a new pivot low is found  
+if not na(lol)
+    // Create a new support line
+    new_line = line.new(bar_index - right, low[right], bar_index + 500, low[right], color=support_color, width=1, extend=extend.right)
+    array.push(support_lines, new_line)
+    
+    // Keep only the last 2 support lines
+    while array.size(support_lines) > 2
+        old_line = array.shift(support_lines)
+        line.delete(old_line)
+
+// When a new breakout pivot high is found
+if not na(bo_hih)
+    // Create a new breakout resistance line
+    new_line = line.new(bar_index - breakout_right, high[breakout_right], bar_index + 500, high[breakout_right], color=bo_resistance_color, width=1, extend=extend.right)
+    array.push(bo_resistance_lines, new_line)
+    
+    // Keep only the last 2 breakout resistance lines
+    while array.size(bo_resistance_lines) > 2
+        old_line = array.shift(bo_resistance_lines)
+        line.delete(old_line)
+
+// When a new breakout pivot low is found  
+if not na(bo_lol)
+    // Create a new breakout support line
+    new_line = line.new(bar_index - breakout_right, low[breakout_right], bar_index + 500, low[breakout_right], color=bo_support_color, width=1, extend=extend.right)
+    array.push(bo_support_lines, new_line)
+    
+    // Keep only the last 2 breakout support lines
+    while array.size(bo_support_lines) > 2
+        old_line = array.shift(bo_support_lines)
+        line.delete(old_line)
+
+// Clean up old resistance lines (older than 17.5 hours)
+if array.size(resistance_lines) > 0
+    for i = array.size(resistance_lines) - 1 to 0
+        current_line = array.get(resistance_lines, i)
+        line_time = line.get_x1(current_line)
+        if bar_index - line_time > (time_threshold / (timeframe.in_seconds() * 1000))
+            line.delete(current_line)
+            array.remove(resistance_lines, i)
+
+// Clean up old support lines (older than 17.5 hours)
+if array.size(support_lines) > 0
+    for i = array.size(support_lines) - 1 to 0
+        current_line = array.get(support_lines, i)
+        line_time = line.get_x1(current_line)
+        if bar_index - line_time > (time_threshold / (timeframe.in_seconds() * 1000))
+            line.delete(current_line)
+            array.remove(support_lines, i)
+
+// Clean up old breakout resistance lines (older than 17.5 hours)
+if array.size(bo_resistance_lines) > 0
+    for i = array.size(bo_resistance_lines) - 1 to 0
+        current_line = array.get(bo_resistance_lines, i)
+        line_time = line.get_x1(current_line)
+        if bar_index - line_time > (time_threshold / (timeframe.in_seconds() * 1000))
+            line.delete(current_line)
+            array.remove(bo_resistance_lines, i)
+
+// Clean up old breakout support lines (older than 17.5 hours)
+if array.size(bo_support_lines) > 0
+    for i = array.size(bo_support_lines) - 1 to 0
+        current_line = array.get(bo_support_lines, i)
+        line_time = line.get_x1(current_line)
+        if bar_index - line_time > (time_threshold / (timeframe.in_seconds() * 1000))
+            line.delete(current_line)
+            array.remove(bo_support_lines, i)
+
+// Check for levels at 9:25 ET - capture what's actually on the chart
+if is_925_et
+    // Get the current resistance lines that are visible
+    identified_lowest_resistance := na
+    if array.size(resistance_lines) > 0
+        res1 = line.get_y1(array.get(resistance_lines, 0))
+        identified_lowest_resistance := res1
+        if array.size(resistance_lines) > 1
+            res2 = line.get_y1(array.get(resistance_lines, 1))
+            identified_lowest_resistance := math.min(res1, res2)
+    
+    // Get the current support lines that are visible  
+    identified_highest_support := na
+    if array.size(support_lines) > 0
+        sup1 = line.get_y1(array.get(support_lines, 0))
+        identified_highest_support := sup1
+        if array.size(support_lines) > 1
+            sup2 = line.get_y1(array.get(support_lines, 1))
+            identified_highest_support := math.max(sup1, sup2)
+    
+    // Get the current breakout resistance lines that are visible
+    bo_lowest_resistance := na
+    if array.size(bo_resistance_lines) > 0
+        res1 = line.get_y1(array.get(bo_resistance_lines, 0))
+        bo_lowest_resistance := res1
+        if array.size(bo_resistance_lines) > 1
+            res2 = line.get_y1(array.get(bo_resistance_lines, 1))
+            bo_lowest_resistance := math.min(res1, res2)
+    
+    // Get the current breakout support lines that are visible  
+    bo_highest_support := na
+    if array.size(bo_support_lines) > 0
+        sup1 = line.get_y1(array.get(bo_support_lines, 0))
+        bo_highest_support := sup1
+        if array.size(bo_support_lines) > 1
+            sup2 = line.get_y1(array.get(bo_support_lines, 1))
+            bo_highest_support := math.max(sup1, sup2)
+
+// Parse global cutoff time
+trade_cutoff_hour = str.tonumber(str.substring(trade_cutoff_time, 0, 2))
+trade_cutoff_min = str.tonumber(str.substring(trade_cutoff_time, 3, 5))
+trade_cutoff_condition = hour(time, "America/New_York") >= trade_cutoff_hour and minute(time, "America/New_York") >= trade_cutoff_min
+
+// Reset daily variables at start of new day
+if dayofweek(time) != dayofweek(time[1])
+    em_trade_taken_today := false
+    em1_conditions_met := false
+    em1_waiting_for_close_above := false
+    em2_conditions_met := false
+    em2_waiting_for_close_below := false
+    breakout_setup_valid := false
+    em3_breakout_occurred := false
+    em3_pullback_occurred := false
+    em3_waiting_for_rebreak := false
+    em4_breakout_occurred := false
+    em4_pullback_occurred := false
+    em4_waiting_for_rebreak := false
+    // Clear all SL/TP prices to prevent trades from previous session
+    em1_sl_price := na
+    em1_tp_price := na
+    em2_sl_price := na
+    em2_tp_price := na
+    em3_sl_price := na
+    em3_tp_price := na
+    em4_sl_price := na
+    em4_tp_price := na
+    breakout_open_price := na
+    bo_lowest_resistance := na
+    bo_highest_support := na
+    // Cancel any pending orders from previous session
+    strategy.cancel("EM1 Long")
+    strategy.cancel("EM2 Short")
+    strategy.cancel("EM3 Long")
+    strategy.cancel("EM4 Short")
+
+// EM1 Entry Model Logic (Long Trades)
+if em1_enabled and not em_trade_taken_today and not trade_cutoff_condition and not na(identified_lowest_resistance)
+    
+    // Check if price is above resistance by trigger distance at 9:25 ET
+    if is_925_et and close > identified_lowest_resistance + em_trigger_distance
+        em1_conditions_met := true
+        
+        // Calculate SL and TP prices
+        em1_sl_price := identified_lowest_resistance - (em_sl_ticks * tick_size)
+        em1_tp_price := identified_lowest_resistance + (em_tp_ticks * tick_size)
+    
+    // EM1 Touch Mode
+    if em1_conditions_met and em_entry_type == "Touch" and strategy.position_size == 0
+        strategy.entry("EM1 Long", strategy.long, limit=identified_lowest_resistance, comment="EM1 Touch")
+        strategy.exit("EM1 Exit", "EM1 Long", stop=em1_sl_price, limit=em1_tp_price)
+        em_trade_taken_today := true
+    
+    // EM1 Close Mode
+    if em1_conditions_met and em_entry_type == "Close" and strategy.position_size == 0
+        // Check if price closed below resistance (start monitoring)
+        if close < identified_lowest_resistance and not em1_waiting_for_close_above
+            em1_waiting_for_close_above := true
+        
+        // Check if price closed above resistance after closing below
+        if em1_waiting_for_close_above and close > identified_lowest_resistance
+            strategy.entry("EM1 Long", strategy.long, comment="EM1 Close")
+            strategy.exit("EM1 Exit", "EM1 Long", stop=em1_sl_price, limit=em1_tp_price)
+            em_trade_taken_today := true
+            em1_waiting_for_close_above := false
+
+// EM2 Entry Model Logic (Short Trades)
+if em2_enabled and not em_trade_taken_today and not trade_cutoff_condition and not na(identified_highest_support)
+    
+    // Check if price is below support by trigger distance at 9:25 ET
+    if is_925_et and close < identified_highest_support - em_trigger_distance
+        em2_conditions_met := true
+        
+        // Calculate SL and TP prices
+        em2_sl_price := identified_highest_support + (em_sl_ticks * tick_size)
+        em2_tp_price := identified_highest_support - (em_tp_ticks * tick_size)
+    
+    // EM2 Touch Mode - ONLY if conditions were met AND we have valid SL/TP prices
+    // Debug: Always check if this block would execute
+    touch_would_execute = em2_conditions_met and em_entry_type == "Touch" and strategy.position_size == 0 and not na(em2_sl_price) and not na(em2_tp_price)
+    if touch_would_execute
+        alert("EM2 Touch SHOULD execute - Conditions:" + str.tostring(em2_conditions_met) + " Type:" + em_entry_type + " Pos:" + str.tostring(strategy.position_size) + " SL:" + str.tostring(em2_sl_price) + " TP:" + str.tostring(em2_tp_price))
+    
+    if em2_conditions_met and em_entry_type == "Touch" and strategy.position_size == 0 and not na(em2_sl_price) and not na(em2_tp_price)
+        alert("EM2 Touch EXECUTING NOW!")
+        strategy.entry("EM2 Short", strategy.short, limit=identified_highest_support, comment="EM2 Touch")
+        strategy.exit("EM2 Exit", "EM2 Short", stop=em2_sl_price, limit=em2_tp_price)
+        em_trade_taken_today := true
+    
+    // EM2 Close Mode - ONLY if conditions were met AND we have valid SL/TP prices
+    if em2_conditions_met and em_entry_type == "Close" and strategy.position_size == 0 and not na(em2_sl_price) and not na(em2_tp_price)
+        // Check if price closed above support (start monitoring)
+        if close > identified_highest_support and not em2_waiting_for_close_below
+            em2_waiting_for_close_below := true
+        
+        // Check if price closed below support after closing above
+        if em2_waiting_for_close_below and close < identified_highest_support
+            strategy.entry("EM2 Short", strategy.short, comment="EM2 Close")
+            strategy.exit("EM2 Exit", "EM2 Short", stop=em2_sl_price, limit=em2_tp_price)
+            em_trade_taken_today := true
+            em2_waiting_for_close_below := false
+
+// Breakout Entry Models Logic (EM3 and EM4)
+if (em3_enabled or em4_enabled) and not em_trade_taken_today and not trade_cutoff_condition
+    
+    // Check shared setup at 9:25 ET: support < open < resistance (using breakout S/R lines)
+    if is_925_et and not na(bo_highest_support) and not na(bo_lowest_resistance)
+        breakout_open_price := open
+        if bo_highest_support < breakout_open_price and breakout_open_price < bo_lowest_resistance
+            breakout_setup_valid := true
+
+// EM3 Entry Model Logic (Long Breakout)
+if em3_enabled and breakout_setup_valid and not em_trade_taken_today and not trade_cutoff_condition
+    
+    // Calculate SL and TP prices (only set once when setup is valid)
+    if na(em3_sl_price) and na(em3_tp_price)
+        em3_sl_price := bo_lowest_resistance - (breakout_sl_ticks * tick_size)
+        em3_tp_price := bo_lowest_resistance + (breakout_tp_ticks * tick_size)
+    
+    // EM3 Breakout Logic
+    if not em3_breakout_occurred
+        // Check for initial breakout above resistance by trigger distance
+        if close > bo_lowest_resistance + breakout_trigger_distance
+            em3_breakout_occurred := true
+    
+    // EM3 Pullback Logic (only after breakout occurred)
+    if em3_breakout_occurred and not em3_pullback_occurred
+        // Check for pullback below resistance
+        if close < bo_lowest_resistance
+            em3_pullback_occurred := true
+            em3_waiting_for_rebreak := true
+    
+    // EM3 Touch Mode (buy stop after pullback)
+    if em3_pullback_occurred and breakout_entry_type == "Touch" and strategy.position_size == 0 and not na(em3_sl_price) and not na(em3_tp_price)
+        strategy.entry("EM3 Long", strategy.long, stop=bo_lowest_resistance, comment="EM3 Touch")
+        strategy.exit("EM3 Exit", "EM3 Long", stop=em3_sl_price, limit=em3_tp_price)
+        em_trade_taken_today := true
+    
+    // EM3 Close Mode (enter on close above resistance after pullback)
+    if em3_waiting_for_rebreak and breakout_entry_type == "Close" and strategy.position_size == 0 and not na(em3_sl_price) and not na(em3_tp_price)
+        if close > bo_lowest_resistance
+            strategy.entry("EM3 Long", strategy.long, comment="EM3 Close")
+            strategy.exit("EM3 Exit", "EM3 Long", stop=em3_sl_price, limit=em3_tp_price)
+            em_trade_taken_today := true
+            em3_waiting_for_rebreak := false
+
+// EM4 Entry Model Logic (Short Breakout)
+if em4_enabled and breakout_setup_valid and not em_trade_taken_today and not trade_cutoff_condition
+    
+    // Calculate SL and TP prices (only set once when setup is valid)
+    if na(em4_sl_price) and na(em4_tp_price)
+        em4_sl_price := bo_highest_support + (breakout_sl_ticks * tick_size)
+        em4_tp_price := bo_highest_support - (breakout_tp_ticks * tick_size)
+    
+    // EM4 Breakout Logic
+    if not em4_breakout_occurred
+        // Check for initial breakout below support by trigger distance
+        if close < bo_highest_support - breakout_trigger_distance
+            em4_breakout_occurred := true
+    
+    // EM4 Pullback Logic (only after breakout occurred)
+    if em4_breakout_occurred and not em4_pullback_occurred
+        // Check for pullback above support
+        if close > bo_highest_support
+            em4_pullback_occurred := true
+            em4_waiting_for_rebreak := true
+    
+    // EM4 Touch Mode (sell stop after pullback)
+    if em4_pullback_occurred and breakout_entry_type == "Touch" and strategy.position_size == 0 and not na(em4_sl_price) and not na(em4_tp_price)
+        strategy.entry("EM4 Short", strategy.short, stop=bo_highest_support, comment="EM4 Touch")
+        strategy.exit("EM4 Exit", "EM4 Short", stop=em4_sl_price, limit=em4_tp_price)
+        em_trade_taken_today := true
+    
+    // EM4 Close Mode (enter on close below support after pullback)
+    if em4_waiting_for_rebreak and breakout_entry_type == "Close" and strategy.position_size == 0 and not na(em4_sl_price) and not na(em4_tp_price)
+        if close < bo_highest_support
+            strategy.entry("EM4 Short", strategy.short, comment="EM4 Close")
+            strategy.exit("EM4 Exit", "EM4 Short", stop=em4_sl_price, limit=em4_tp_price)
+            em_trade_taken_today := true
+            em4_waiting_for_rebreak := false
+
+// Create minimized table to display key information (5 rows only)
+var table levels_table = table.new(position.top_right, 2, 6, bgcolor=color.white, border_width=1)
+
+// Update table on every bar
+if barstate.islast
+    // Table headers
+    table.cell(levels_table, 0, 0, "Level Type", text_color=color.black, bgcolor=color.gray)
+    table.cell(levels_table, 1, 0, "Price", text_color=color.black, bgcolor=color.gray)
+    
+    // EM 1 & 2 Resistance
+    table.cell(levels_table, 0, 1, "EM 1 & 2 Resistance", text_color=color.black, bgcolor=color.white)
+    table.cell(levels_table, 1, 1, not na(identified_lowest_resistance) ? str.tostring(identified_lowest_resistance, "#.##") : "N/A", text_color=color.black, bgcolor=color.white)
+    
+    // EM 1 & 2 Support
+    table.cell(levels_table, 0, 2, "EM 1 & 2 Support", text_color=color.black, bgcolor=color.white)
+    table.cell(levels_table, 1, 2, not na(identified_highest_support) ? str.tostring(identified_highest_support, "#.##") : "N/A", text_color=color.black, bgcolor=color.white)
+    
+    // EM 3 & 4 Resistance
+    table.cell(levels_table, 0, 3, "EM 3 & 4 Resistance", text_color=color.black, bgcolor=color.white)
+    table.cell(levels_table, 1, 3, not na(bo_lowest_resistance) ? str.tostring(bo_lowest_resistance, "#.##") : "N/A", text_color=color.black, bgcolor=color.white)
+    
+    // EM 3 & 4 Support
+    table.cell(levels_table, 0, 4, "EM 3 & 4 Support", text_color=color.black, bgcolor=color.white)
+    table.cell(levels_table, 1, 4, not na(bo_highest_support) ? str.tostring(bo_highest_support, "#.##") : "N/A", text_color=color.black, bgcolor=color.white)
+    
+    // Active entry model
+    table.cell(levels_table, 0, 5, "Active Entry Model", text_color=color.black, bgcolor=color.lime)
+    active_model = "None"
+    if em1_conditions_met
+        active_model := "EM1 Long"
+    else if em2_conditions_met
+        active_model := "EM2 Short"
+    else if breakout_setup_valid and (em3_breakout_occurred or em4_breakout_occurred)
+        if em3_breakout_occurred
+            active_model := "EM3 Long"
+        else if em4_breakout_occurred
+            active_model := "EM4 Short"
+    table.cell(levels_table, 1, 5, active_model, text_color=color.black, bgcolor=color.lime)

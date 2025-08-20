@@ -1,0 +1,269 @@
+//@version=5
+strategy(title='Fibonacci Golden Level Entry Strategy', shorttitle='Fib Golden Entry', overlay=true, default_qty_type=strategy.fixed, default_qty_value=1)
+
+// ============================================================================
+// INPUT SETTINGS
+// ============================================================================
+
+// ADX Settings
+useADXFilter = input.bool(true, title="Use ADX Filter", group="ADX Settings")
+adxThreshold = input.int(20, title="ADX Threshold", minval=1, maxval=100, group="ADX Settings")
+
+// Position Sizing
+positionType = input.string("Fixed Lot", title="Position Sizing", options=["Fixed Lot", "Fixed USD"], group="Position Settings")
+fixedLotSize = input.float(1.0, title="Fixed Lot Size", minval=0.1, step=0.1, group="Position Settings")
+fixedUSDSize = input.float(500.0, title="Fixed USD Amount", minval=10.0, step=10.0, group="Position Settings")
+
+// Entry Settings
+entryLevel = input.string("0.618 Fib", title="Entry Level", options=["0.618 Fib", "0.50 Fib"], group="Entry/Exit Settings")
+
+// Take Profit Settings
+tpType = input.string("0.236 Fib", title="Take Profit", options=["0.236 Fib", "Top Value", "Top + Ticks"], group="Entry/Exit Settings")
+tpTicks = input.int(10, title="TP Ticks Above Top", minval=1, group="Entry/Exit Settings")
+
+// Stop Loss Settings
+slBuffer = input.int(0, title="SL Buffer (Ticks)", minval=0, group="TP/SL Settings")
+
+// ============================================================================
+// INDICATORS
+// ============================================================================
+
+// EMAs and SMA
+ema9 = ta.ema(close, 9)
+ema21 = ta.ema(close, 21)
+sma50 = ta.sma(close, 50)
+
+// ADX
+[plusDI, minusDI, adx] = ta.dmi(14, 14)
+
+// ============================================================================
+// TIME CONDITIONS
+// ============================================================================
+
+// Force close at 15:55 Eastern Time using hour and minute
+timeToClose = hour(time, "America/New_York") == 15 and minute(time, "America/New_York") == 55
+
+// ============================================================================
+// VARIABLES
+// ============================================================================
+
+// Variables to store Base and Top values
+var float baseValue = na
+var float topValue = na
+var int baseBar = na
+var int topBar = na
+var bool baseDefined = false
+var bool topDefined = false
+var bool allowNewBase = true
+var bool stoppedOut = false
+
+// ============================================================================
+// FRACTAL DETECTION
+// ============================================================================
+
+// Fractal Recognition Functions
+isRegularFractal(mode) =>
+    ret = mode == 1 ? high[4] < high[3] and high[3] < high[2] and high[2] > high[1] and high[1] > high[0] :
+        mode == -1 ? low[4] > low[3] and low[3] > low[2] and low[2] < low[1] and low[1] < low[0] : false
+
+// Alternative fractal detection for testing
+botFractalAlt = low[2] < low[1] and low[2] < low[3] and low[1] < low[0] and low[3] < low[4]
+
+// Fractal Detection
+topFractal = isRegularFractal(1)   // Red fractals (high points)
+botFractal = isRegularFractal(-1)  // Green fractals (low points)
+
+
+
+// ============================================================================
+// BASE AND TOP DETECTION
+// ============================================================================
+
+// Check if ADX condition is met
+adxCondition = not useADXFilter or adx > adxThreshold
+
+// Track if position was stopped out - MUST BE BEFORE ENTRY LOGIC
+if strategy.position_size == 0 and strategy.position_size[1] != 0
+    // Check if exit was due to stop loss by comparing last exit price to stop loss level
+    if strategy.closedtrades > 0 and not na(baseValue)
+        lastExitPrice = strategy.closedtrades.exit_price(strategy.closedtrades - 1)
+        stopLossLevel = baseValue - (slBuffer * syminfo.mintick)
+        // More precise stop loss detection
+        if lastExitPrice <= stopLossLevel * 1.002  // Slightly larger tolerance
+            stoppedOut := true
+
+// Base Detection Logic
+if botFractalAlt and allowNewBase and strategy.position_size == 0
+    // Check ADX condition for Base using the alternative fractal bar (offset 2)
+    adxConditionBase = not useADXFilter or adx[2] > adxThreshold
+    
+    // Check EMA conditions for Base using the alternative fractal bar (offset 2)
+    emaConditionBase = ema9[2] < ema21[2] and ema21[2] < sma50[2]
+    
+    if adxConditionBase and emaConditionBase
+        // Only assign/update Base if no base exists OR new fractal is lower than current base
+        if na(baseValue) or low[2] < baseValue
+            baseValue := low[2]  // Use the low from the fractal bar
+            baseBar := bar_index[2]  // Use the bar index from the fractal bar
+            baseDefined := true
+            topDefined := false  // Reset Top when new lower Base is found
+            stoppedOut := false  // Reset stop loss flag when new lower base is found
+
+// Plot Base value line when defined
+plot(not na(baseValue) ? baseValue : na, title="Base Value Line", color=color.yellow, style=plot.style_line, linewidth=2)
+
+// Base assignment plotting is handled in the main plotting section below
+
+// ============================================================================
+// TOP DETECTION
+// ============================================================================
+
+// Top Detection Logic
+if topFractal and baseDefined and allowNewBase
+    // Check ADX condition for Top using the fractal bar (offset 2)
+    adxConditionTop = not useADXFilter or adx[2] > adxThreshold
+    
+    // Check EMA conditions for Top using the fractal bar (offset 2)
+    emaConditionTop = ema9[2] > ema21[2]
+    
+    if adxConditionTop and emaConditionTop
+        if not topDefined
+            topValue := high[2]  // Use the high from the fractal bar
+            topBar := bar_index[2]  // Use the bar index from the fractal bar
+            topDefined := true
+        else if high[2] > topValue and strategy.position_size == 0
+            topValue := high[2]  // Use the high from the fractal bar
+            topBar := bar_index[2]  // Use the bar index from the fractal bar
+            stoppedOut := false  // Reset stop loss flag when new higher top is found
+
+// ============================================================================
+// FIBONACCI CALCULATIONS
+// ============================================================================
+
+// Calculate Fibonacci levels
+fib618 = baseDefined and topDefined ? topValue - (topValue - baseValue) * 0.618 : na
+fib50 = baseDefined and topDefined ? topValue - (topValue - baseValue) * 0.50 : na
+fib236 = baseDefined and topDefined ? topValue - (topValue - baseValue) * 0.236 : na
+
+// Determine entry level based on user selection
+entryFibLevel = entryLevel == "0.618 Fib" ? fib618 : fib50
+
+// ============================================================================
+// TRADE MANAGEMENT
+// ============================================================================
+
+// Cancel existing limit order if new Top is defined
+if topDefined and strategy.position_size == 0
+    strategy.cancel_all()
+
+// Place limit order at selected fibonacci level
+if baseDefined and topDefined and strategy.position_size == 0 and not na(entryFibLevel) and not stoppedOut
+    // Calculate position size
+    qty = positionType == "Fixed Lot" ? fixedLotSize : fixedUSDSize / close
+    
+    // Calculate stop loss with buffer
+    stopLoss = baseValue - (slBuffer * syminfo.mintick)
+    
+    // Calculate take profit
+    takeProfit = tpType == "0.236 Fib" ? fib236 : 
+                 tpType == "Top Value" ? topValue : 
+                 topValue + (tpTicks * syminfo.mintick)
+    
+    // Entry comment based on selected level
+    entryComment = entryLevel == "0.618 Fib" ? "Fib 0.618" : "Fib 0.50"
+    
+    strategy.entry("Fib Entry", strategy.long, qty=qty, limit=entryFibLevel, comment=entryComment)
+    strategy.exit("Fib Exit", "Fib Entry", limit=takeProfit, stop=stopLoss)
+
+// Force close at 15:55 Eastern Time
+if timeToClose and strategy.position_size != 0
+    strategy.close_all("Force Close 15:55")
+
+// Simple daily reset: Clear base and top ONCE when 15:55 starts (not continuously)
+if timeToClose and not timeToClose[1]
+    baseValue := na
+    topValue := na
+    baseDefined := false
+    topDefined := false
+    stoppedOut := false  // Reset stop loss flag on daily reset
+
+// Reset Base and Top after normal trade closes
+if strategy.position_size == 0 and strategy.position_size[1] != 0
+    baseDefined := false
+    topDefined := false
+    baseValue := na
+    topValue := na
+
+// ============================================================================
+// PLOTTING
+// ============================================================================
+
+// Plot fractals
+plotshape(botFractal, title='Bottom Fractals', style=shape.triangleup, 
+          location=location.belowbar, color=color.lime, size=size.tiny, offset=-2)
+plotshape(topFractal, title='Top Fractals', style=shape.triangledown, 
+          location=location.abovebar, color=color.red, size=size.tiny, offset=-2)
+
+// Plot Base markers
+plotshape(baseDefined and bar_index == baseBar, title='Base Marker', style=shape.triangleup,
+          location=location.belowbar, color=color.yellow, size=size.tiny)
+plotshape(baseDefined and bar_index == baseBar and low[2] < baseValue, title='New Base Marker', style=shape.triangleup,
+          location=location.belowbar, color=color.teal, size=size.tiny)
+
+// Plot Top markers
+plotshape(topDefined and bar_index == topBar, title='Top Marker', style=shape.triangledown,
+          location=location.abovebar, color=color.yellow, size=size.tiny)
+plotshape(topDefined and bar_index == topBar and high[2] > topValue, title='New Top Marker', style=shape.triangledown,
+          location=location.abovebar, color=color.teal, size=size.tiny)
+
+// Plot selected entry fibonacci level
+plot(baseDefined and topDefined and entryLevel == "0.618 Fib" ? fib618 : na, title="0.618 Fib Entry Level", color=color.white, style=plot.style_linebr, linewidth=2)
+plot(baseDefined and topDefined and entryLevel == "0.50 Fib" ? fib50 : na, title="0.50 Fib Entry Level", color=color.white, style=plot.style_linebr, linewidth=2)
+
+
+
+// ============================================================================
+// DEBUG TABLE
+// ============================================================================
+
+// Create debug table
+var table debugTable = table.new(position.top_right, 2, 12, bgcolor=color.black, border_width=1)
+
+// Update table data
+if barstate.islast
+    table.cell(debugTable, 0, 0, "Base Defined", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 0, not na(baseValue) ? "YES" : "NO", text_color=color.white, bgcolor=color.gray)
+    
+    table.cell(debugTable, 0, 1, "Top Defined", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 1, topDefined ? "YES" : "NO", text_color=color.white, bgcolor=color.gray)
+    
+    table.cell(debugTable, 0, 2, "Base Value", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 2, not na(baseValue) ? str.tostring(baseValue, "#.####") : "N/A", text_color=color.white, bgcolor=color.gray)
+    
+    table.cell(debugTable, 0, 3, "Top Value", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 3, topDefined ? str.tostring(topValue, "#.####") : "N/A", text_color=color.white, bgcolor=color.gray)
+    
+    entryLevelLabel = entryLevel == "0.618 Fib" ? "0.618 Fib" : "0.50 Fib"
+    table.cell(debugTable, 0, 4, entryLevelLabel, text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 4, not na(entryFibLevel) ? str.tostring(entryFibLevel, "#.####") : "N/A", text_color=color.white, bgcolor=color.gray)
+    
+    table.cell(debugTable, 0, 5, "Bot Fractal Alt", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 5, botFractalAlt ? "YES" : "NO", text_color=color.white, bgcolor=color.gray)
+    
+    table.cell(debugTable, 0, 6, "Allow New Base", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 6, allowNewBase ? "YES" : "NO", text_color=color.white, bgcolor=color.gray)
+    
+    table.cell(debugTable, 0, 7, "Position", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 7, strategy.position_size != 0 ? "LONG" : "FLAT", text_color=color.white, bgcolor=color.gray)
+    
+    table.cell(debugTable, 0, 8, "Time To Close", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 8, timeToClose ? "YES" : "NO", text_color=color.white, bgcolor=color.gray)
+    
+    table.cell(debugTable, 0, 9, "Time To Close [1]", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 9, timeToClose[1] ? "YES" : "NO", text_color=color.white, bgcolor=color.gray)
+    
+    table.cell(debugTable, 0, 10, "Reset Condition", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 10, (timeToClose and not timeToClose[1]) ? "YES" : "NO", text_color=color.white, bgcolor=color.gray)
+    
+    table.cell(debugTable, 0, 11, "Stopped Out", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 11, stoppedOut ? "YES" : "NO", text_color=color.white, bgcolor=color.gray)

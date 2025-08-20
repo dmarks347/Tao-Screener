@@ -1,0 +1,303 @@
+//@version=5
+strategy(title='US30 London NY Breakout Strategy', shorttitle='US30 Lon-NY', overlay=true, default_qty_type=strategy.fixed, default_qty_value=1, max_bars_back=500)
+
+// ============================================================================
+// INPUT SETTINGS
+// ============================================================================
+
+// Trading Settings
+lonTradeCount = input.int(2, title="London Trades", options=[0, 1, 2], group="Trading Settings", tooltip="Number of trades to place for London session (0=disabled, 1=long or short, 2=both)")
+nyTradeCount = input.int(2, title="NY Trades", options=[0, 1, 2], group="Trading Settings", tooltip="Number of trades to place for NY session (0=disabled, 1=long or short, 2=both)")
+
+// Range Detection Settings
+lonRangeType = input.string("Late", title="London Range Detection", options=["Early", "Late"], group="Range Settings", tooltip="Early: 2:30-2:45 ET, Late: 2:45-3:00 ET")
+nyRangeType = input.string("Late", title="NY Range Detection", options=["Early", "Late"], group="Range Settings", tooltip="Early: 9:00-9:15 ET, Late: 9:15-9:30 ET")
+
+// Position Sizing
+positionType = input.string("Fixed Lot", title="Position Sizing", options=["Fixed Lot", "Fixed USD"], group="Position Settings")
+fixedLotSize = input.float(1.0, title="Fixed Lot Size", minval=0.1, step=0.1, group="Position Settings")
+fixedUSDSize = input.float(1000.0, title="Fixed USD Amount", minval=100.0, step=100.0, group="Position Settings")
+
+// Cancel Times
+lonCancelTime = input.string("06:00", title="London Cancel Time (ET)", group="Time Settings", tooltip="Time to cancel unfilled London orders")
+nyCancelTime = input.string("12:00", title="NY Cancel Time (ET)", group="Time Settings", tooltip="Time to cancel unfilled NY orders")
+lonCloseTime = input.string("09:25", title="London Close Time (ET)", group="Time Settings", tooltip="Time to close London positions")
+nyCloseTime = input.string("15:55", title="NY Close Time (ET)", group="Time Settings", tooltip="Time to close NY positions")
+
+// ============================================================================
+// TIME CONDITIONS
+// ============================================================================
+
+// London Early session: 2:30-2:45 ET
+lonEarlySessionStart = hour(time, "America/New_York") == 2 and minute(time, "America/New_York") == 30
+lonEarlySessionEnd = hour(time, "America/New_York") == 2 and minute(time, "America/New_York") == 45
+lonEarlySession = hour(time, "America/New_York") == 2 and minute(time, "America/New_York") >= 30 and minute(time, "America/New_York") < 45
+
+// London Late session: 2:45-3:00 ET (original)
+lonLateSessionStart = hour(time, "America/New_York") == 2 and minute(time, "America/New_York") == 45
+lonLateSessionEnd = hour(time, "America/New_York") == 3 and minute(time, "America/New_York") == 0
+lonLateSession = (hour(time, "America/New_York") == 2 and minute(time, "America/New_York") >= 45) or 
+                 (hour(time, "America/New_York") == 3 and minute(time, "America/New_York") == 0)
+
+// London session selection based on user input
+lonSessionStart = lonRangeType == "Early" ? lonEarlySessionStart : lonLateSessionStart
+lonSessionEnd = lonRangeType == "Early" ? lonEarlySessionEnd : lonLateSessionEnd
+lonSession = lonRangeType == "Early" ? lonEarlySession : lonLateSession
+
+// NY Early session: 9:00-9:15 ET
+nyEarlySessionStart = hour(time, "America/New_York") == 9 and minute(time, "America/New_York") == 0
+nyEarlySessionEnd = hour(time, "America/New_York") == 9 and minute(time, "America/New_York") == 15
+nyEarlySession = hour(time, "America/New_York") == 9 and minute(time, "America/New_York") >= 0 and minute(time, "America/New_York") < 15
+
+// NY Late session: 9:15-9:30 ET (original)
+nyLateSessionStart = hour(time, "America/New_York") == 9 and minute(time, "America/New_York") == 15
+nyLateSessionEnd = hour(time, "America/New_York") == 9 and minute(time, "America/New_York") == 30
+nyLateSession = hour(time, "America/New_York") == 9 and minute(time, "America/New_York") >= 15 and minute(time, "America/New_York") <= 30
+
+// NY session selection based on user input
+nySessionStart = nyRangeType == "Early" ? nyEarlySessionStart : nyLateSessionStart
+nySessionEnd = nyRangeType == "Early" ? nyEarlySessionEnd : nyLateSessionEnd
+nySession = nyRangeType == "Early" ? nyEarlySession : nyLateSession
+
+// Trade entry timing (always at session open regardless of range detection)
+lonTradeEntryTime = hour(time, "America/New_York") == 3 and minute(time, "America/New_York") == 0
+nyTradeEntryTime = hour(time, "America/New_York") == 9 and minute(time, "America/New_York") == 30
+
+// Cancel times
+lonCancelHour = str.tonumber(str.substring(lonCancelTime, 0, 2))
+lonCancelMin = str.tonumber(str.substring(lonCancelTime, 3, 5))
+nyCancelHour = str.tonumber(str.substring(nyCancelTime, 0, 2))
+nyCancelMin = str.tonumber(str.substring(nyCancelTime, 3, 5))
+
+lonCancelTime_condition = hour(time, "America/New_York") == lonCancelHour and minute(time, "America/New_York") == lonCancelMin
+nyCancelTime_condition = hour(time, "America/New_York") == nyCancelHour and minute(time, "America/New_York") == nyCancelMin
+
+// London close time
+lonCloseHour = str.tonumber(str.substring(lonCloseTime, 0, 2))
+lonCloseMin = str.tonumber(str.substring(lonCloseTime, 3, 5))
+lonCloseTime_condition = hour(time, "America/New_York") == lonCloseHour and minute(time, "America/New_York") == lonCloseMin
+
+// NY close time
+nyCloseHour = str.tonumber(str.substring(nyCloseTime, 0, 2))
+nyCloseMin = str.tonumber(str.substring(nyCloseTime, 3, 5))
+nyCloseTime_condition = hour(time, "America/New_York") == nyCloseHour and minute(time, "America/New_York") == nyCloseMin
+
+// ============================================================================
+// VARIABLES
+// ============================================================================
+
+// London session variables
+var float lonHigh = na
+var float lonLow = na
+var bool lonDefined = false
+var bool lonTradesPlaced = false
+
+// NY session variables
+var float nyHigh = na
+var float nyLow = na
+var bool nyDefined = false
+var bool nyTradesPlaced = false
+
+// Trade counter
+var int dailyTrades = 0
+
+// Position close tracking
+var bool lonPositionsClosed = false
+var bool nyPositionsClosed = false
+
+// ============================================================================
+// SESSION HIGH/LOW DETECTION
+// ============================================================================
+
+// Reset daily counter at start of new day
+if dayofweek(time) != dayofweek(time[1])
+    dailyTrades := 0
+    lonDefined := false
+    lonTradesPlaced := false
+    nyDefined := false
+    nyTradesPlaced := false
+    lonPositionsClosed := false
+    nyPositionsClosed := false
+
+// London session (2:45-3:00 ET) - capture high/low during entire 15-minute period
+if lonSession
+    if lonSessionStart and not lonDefined
+        lonHigh := high
+        lonLow := low
+        lonDefined := true
+    else if lonDefined
+        lonHigh := math.max(lonHigh, high)
+        lonLow := math.min(lonLow, low)
+
+// NY session (9:15-9:30 ET) - capture high/low during entire 15-minute period
+if nySession
+    if nySessionStart and not nyDefined
+        nyHigh := high
+        nyLow := low
+        nyDefined := true
+    else if nyDefined
+        nyHigh := math.max(nyHigh, high)
+        nyLow := math.min(nyLow, low)
+
+// ============================================================================
+// TRADE MANAGEMENT
+// ============================================================================
+
+// London trades - place when market opens (on the 3:00 bar regardless of range detection timing)
+if lonDefined and not lonTradesPlaced and lonTradeEntryTime and not lonTradeEntryTime[1] and lonTradeCount > 0
+    // Calculate position size
+    qty = positionType == "Fixed Lot" ? fixedLotSize : fixedUSDSize / close
+    
+    // Calculate range in ticks
+    lonRange = lonHigh - lonLow
+    
+    // Place London Long trade (buy stop at high, SL at low, TP at 2x range)
+    if lonTradeCount >= 1 and dailyTrades < 4
+        strategy.entry("Lon Long", strategy.long, qty=qty, stop=lonHigh, comment="Lon Long @ " + str.format("{0,number,00}:{1,number,00}", hour(time, "America/New_York"), minute(time, "America/New_York")))
+        strategy.exit("Lon Long Exit", "Lon Long", stop=lonLow, limit=lonHigh + (2 * lonRange))
+        dailyTrades := dailyTrades + 1
+    
+    // Place London Short trade (sell stop at low, SL at high, TP at 2x range)
+    if lonTradeCount == 2 and dailyTrades < 4
+        strategy.entry("Lon Short", strategy.short, qty=qty, stop=lonLow, comment="Lon Short @ " + str.format("{0,number,00}:{1,number,00}", hour(time, "America/New_York"), minute(time, "America/New_York")))
+        strategy.exit("Lon Short Exit", "Lon Short", stop=lonHigh, limit=lonLow - (2 * lonRange))
+        dailyTrades := dailyTrades + 1
+    
+    lonTradesPlaced := true
+
+// NY trades - place when market opens (on the 9:30 bar regardless of range detection timing)
+if nyDefined and not nyTradesPlaced and nyTradeEntryTime and not nyTradeEntryTime[1] and nyTradeCount > 0
+    // Calculate position size
+    qty = positionType == "Fixed Lot" ? fixedLotSize : fixedUSDSize / close
+    
+    // Calculate range in ticks
+    nyRange = nyHigh - nyLow
+    
+    // Place NY Long trade (buy stop at high, SL at low, TP at 2x range)
+    if nyTradeCount >= 1 and dailyTrades < 4
+        strategy.entry("NY Long", strategy.long, qty=qty, stop=nyHigh, comment="NY Long @ " + str.format("{0,number,00}:{1,number,00}", hour(time, "America/New_York"), minute(time, "America/New_York")))
+        strategy.exit("NY Long Exit", "NY Long", stop=nyLow, limit=nyHigh + (2 * nyRange))
+        dailyTrades := dailyTrades + 1
+    
+    // Place NY Short trade (sell stop at low, SL at high, TP at 2x range)
+    if nyTradeCount == 2 and dailyTrades < 4
+        strategy.entry("NY Short", strategy.short, qty=qty, stop=nyLow, comment="NY Short @ " + str.format("{0,number,00}:{1,number,00}", hour(time, "America/New_York"), minute(time, "America/New_York")))
+        strategy.exit("NY Short Exit", "NY Short", stop=nyHigh, limit=nyLow - (2 * nyRange))
+        dailyTrades := dailyTrades + 1
+    
+    nyTradesPlaced := true
+
+// Cancel unfilled London orders at specified time
+if lonCancelTime_condition
+    strategy.cancel("Lon Long")
+    strategy.cancel("Lon Short")
+
+// Cancel unfilled NY orders at specified time
+if nyCancelTime_condition
+    strategy.cancel("NY Long")
+    strategy.cancel("NY Short")
+
+// Close London positions at specified time or after (continuous check)
+lonShouldClose = (hour(time, "America/New_York") > lonCloseHour) or 
+                 (hour(time, "America/New_York") == lonCloseHour and minute(time, "America/New_York") >= lonCloseMin)
+
+if lonShouldClose and not lonPositionsClosed
+    strategy.close("Lon Long", comment="London Close " + str.format("{0,number,00}:{1,number,00}", hour(time, "America/New_York"), minute(time, "America/New_York")))
+    strategy.close("Lon Short", comment="London Close " + str.format("{0,number,00}:{1,number,00}", hour(time, "America/New_York"), minute(time, "America/New_York")))
+    // Also cancel any pending London orders
+    strategy.cancel("Lon Long")
+    strategy.cancel("Lon Short")
+    lonPositionsClosed := true
+
+// Close NY positions at specified time or after (continuous check)
+nyShouldClose = (hour(time, "America/New_York") > nyCloseHour) or 
+                (hour(time, "America/New_York") == nyCloseHour and minute(time, "America/New_York") >= nyCloseMin)
+
+if nyShouldClose and not nyPositionsClosed
+    strategy.close("NY Long", comment="NY Close " + str.format("{0,number,00}:{1,number,00}", hour(time, "America/New_York"), minute(time, "America/New_York")))
+    strategy.close("NY Short", comment="NY Close " + str.format("{0,number,00}:{1,number,00}", hour(time, "America/New_York"), minute(time, "America/New_York")))
+    // Also cancel any pending NY orders
+    strategy.cancel("NY Long")
+    strategy.cancel("NY Short")
+    nyPositionsClosed := true
+
+// ============================================================================
+// PLOTTING
+// ============================================================================
+
+// Highlight London session (shows selected range detection period)
+bgcolor(lonSession ? color.new(color.blue, 90) : na, title="London Range Detection")
+
+// Highlight NY session (shows selected range detection period)
+bgcolor(nySession ? color.new(color.orange, 90) : na, title="NY Range Detection")
+
+// Plot London high/low
+plot(lonDefined ? lonHigh : na, title="London High", color=color.red, style=plot.style_line, linewidth=2)
+plot(lonDefined ? lonLow : na, title="London Low", color=color.green, style=plot.style_line, linewidth=2)
+
+// Plot NY high/low
+plot(nyDefined ? nyHigh : na, title="NY High", color=color.maroon, style=plot.style_line, linewidth=2)
+plot(nyDefined ? nyLow : na, title="NY Low", color=color.lime, style=plot.style_line, linewidth=2)
+
+// ============================================================================
+// DEBUG TABLE
+// ============================================================================
+
+// Create debug table
+var table debugTable = table.new(position.top_right, 2, 18, bgcolor=color.black, border_width=1)
+
+// Update table data
+if barstate.islast
+    table.cell(debugTable, 0, 0, "London Range Type", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 0, lonRangeType, text_color=color.white, bgcolor=color.gray)
+    
+    table.cell(debugTable, 0, 1, "NY Range Type", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 1, nyRangeType, text_color=color.white, bgcolor=color.gray)
+    
+    table.cell(debugTable, 0, 2, "London Session", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 2, lonSession ? "ACTIVE" : "INACTIVE", text_color=color.white, bgcolor=color.gray)
+    
+    table.cell(debugTable, 0, 3, "NY Session", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 3, nySession ? "ACTIVE" : "INACTIVE", text_color=color.white, bgcolor=color.gray)
+    
+    table.cell(debugTable, 0, 4, "London Defined", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 4, lonDefined ? "YES" : "NO", text_color=color.white, bgcolor=color.gray)
+    
+    table.cell(debugTable, 0, 5, "NY Defined", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 5, nyDefined ? "YES" : "NO", text_color=color.white, bgcolor=color.gray)
+    
+    table.cell(debugTable, 0, 6, "London Trades Placed", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 6, lonTradesPlaced ? "YES" : "NO", text_color=color.white, bgcolor=color.gray)
+    
+    table.cell(debugTable, 0, 7, "NY Trades Placed", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 7, nyTradesPlaced ? "YES" : "NO", text_color=color.white, bgcolor=color.gray)
+    
+    table.cell(debugTable, 0, 8, "Daily Trades", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 8, str.tostring(dailyTrades) + "/4", text_color=color.white, bgcolor=color.gray)
+    
+    table.cell(debugTable, 0, 9, "Current Time (ET)", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 9, str.format("{0,number,00}:{1,number,00}", hour(time, "America/New_York"), minute(time, "America/New_York")), text_color=color.white, bgcolor=color.gray)
+    
+    table.cell(debugTable, 0, 10, "London Entry Time", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 10, lonTradeEntryTime ? "YES" : "NO", text_color=color.white, bgcolor=color.gray)
+    
+    table.cell(debugTable, 0, 11, "NY Entry Time", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 11, nyTradeEntryTime ? "YES" : "NO", text_color=color.white, bgcolor=color.gray)
+    
+    table.cell(debugTable, 0, 12, "London Close Time", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 12, lonCloseTime_condition ? "YES" : "NO", text_color=color.white, bgcolor=color.gray)
+    
+    table.cell(debugTable, 0, 13, "London Positions Closed", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 13, lonPositionsClosed ? "YES" : "NO", text_color=color.white, bgcolor=color.gray)
+    
+    table.cell(debugTable, 0, 14, "NY Close Time", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 14, nyCloseTime_condition ? "YES" : "NO", text_color=color.white, bgcolor=color.gray)
+    
+    table.cell(debugTable, 0, 15, "NY Positions Closed", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 15, nyPositionsClosed ? "YES" : "NO", text_color=color.white, bgcolor=color.gray)
+    
+    table.cell(debugTable, 0, 16, "London Range Period", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 16, lonRangeType == "Early" ? "2:30-2:45" : "2:45-3:00", text_color=color.white, bgcolor=color.gray)
+    
+    table.cell(debugTable, 0, 17, "NY Range Period", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 17, nyRangeType == "Early" ? "9:00-9:15" : "9:15-9:30", text_color=color.white, bgcolor=color.gray)

@@ -1,0 +1,162 @@
+//@version=5
+indicator("Session High/Low Lines", overlay=true, max_lines_count=10)
+
+// === USER INPUTS ===
+sessionStartHour = input.int(3, "Session Start Hour (ET)", minval=0, maxval=23, group="Session Times")
+sessionStartMinute = input.int(0, "Session Start Minute (ET)", minval=0, maxval=59, group="Session Times")
+sessionEndHour = input.int(12, "Session End Hour (ET)", minval=0, maxval=23, group="Session Times")
+sessionEndMinute = input.int(0, "Session End Minute (ET)", minval=0, maxval=59, group="Session Times")
+
+sessionsToShow = input.int(2, "Number of Sessions to Show", minval=1, maxval=10, group="Display")
+lineColor = input.color(color.yellow, "Line Color", group="Display")
+showLabels = input.bool(true, "Show Labels", group="Display")
+showVWAP = input.bool(true, "Show VWAP", group="Display")
+vwapColor = input.color(color.purple, "VWAP Color", group="Display")
+
+// === SESSION DETECTION ===
+// Check if current bar is within session time
+inSession() =>
+    sessionStart = sessionStartHour * 60 + sessionStartMinute
+    sessionEnd = sessionEndHour * 60 + sessionEndMinute
+    currentTime = hour * 60 + minute
+    
+    if sessionStart < sessionEnd
+        currentTime >= sessionStart and currentTime < sessionEnd
+    else
+        currentTime >= sessionStart or currentTime < sessionEnd
+
+// === VWAP CALCULATION (Resets daily at 17:01 ET) ===
+var float vwapSum = 0.0
+var float volumeSum = 0.0
+var float dailyVWAP = na
+var int lastResetDay = na
+
+// Check if we need to reset VWAP (at 17:01 ET or new day)
+vwapResetTime() =>
+    hour == 17 and minute >= 1
+
+// Reset VWAP when time reaches 17:01 ET or on new day
+currentDay = dayofweek
+if vwapResetTime() and (na(lastResetDay) or currentDay != lastResetDay)
+    vwapSum := 0.0
+    volumeSum := 0.0
+    lastResetDay := currentDay
+
+// Initialize VWAP on first bar if not already done
+if na(dailyVWAP) and not na(volume) and volume > 0
+    vwapSum := 0.0
+    volumeSum := 0.0
+
+// Update VWAP calculation
+if not na(volume) and volume > 0
+    typicalPrice = (high + low + close) / 3
+    vwapSum += typicalPrice * volume
+    volumeSum += volume
+    
+    if volumeSum > 0
+        dailyVWAP := vwapSum / volumeSum
+
+// Plot VWAP
+plot(showVWAP ? dailyVWAP : na, "Daily VWAP (Resets 17:01 ET)", color=vwapColor, linewidth=2)
+
+// === SESSION TRACKING ===
+var float sessionHigh = na
+var float sessionLow = na
+var int sessionStartBar = na
+var bool sessionActive = false
+
+// Arrays to store multiple sessions
+var sessionHighs = array.new<float>()
+var sessionLows = array.new<float>()
+var sessionStartBars = array.new<int>()
+var sessionEndBars = array.new<int>()
+var sessionHighLines = array.new<line>()
+var sessionLowLines = array.new<line>()
+
+// Detect new session start
+newSession = not sessionActive and inSession()
+if newSession
+    sessionHigh := high
+    sessionLow := low
+    sessionStartBar := bar_index
+    sessionActive := true
+
+// Update high/low during active session
+if sessionActive and inSession()
+    sessionHigh := math.max(sessionHigh, high)
+    sessionLow := math.min(sessionLow, low)
+
+// Detect session end
+sessionEnded = sessionActive and not inSession()
+if sessionEnded
+    sessionActive := false
+    
+    // Store completed session
+    if not na(sessionHigh) and not na(sessionLow) and not na(sessionStartBar)
+        // Add new session to arrays
+        array.unshift(sessionHighs, sessionHigh)
+        array.unshift(sessionLows, sessionLow)
+        array.unshift(sessionStartBars, sessionStartBar)
+        array.unshift(sessionEndBars, bar_index)
+        
+        // Draw lines for this session
+        highLine = line.new(sessionStartBar, sessionHigh, bar_index, sessionHigh, 
+                           color=lineColor, width=2, extend=extend.right)
+        lowLine = line.new(sessionStartBar, sessionLow, bar_index, sessionLow, 
+                          color=lineColor, width=2, extend=extend.right)
+        
+        array.unshift(sessionHighLines, highLine)
+        array.unshift(sessionLowLines, lowLine)
+        
+        // Add labels if enabled
+        if showLabels
+            label.new(bar_index, sessionHigh, "High: " + str.tostring(sessionHigh, "#.##"), 
+                     color=color.new(lineColor, 100), style=label.style_label_down, 
+                     textcolor=lineColor, size=size.small)
+            
+            label.new(bar_index, sessionLow, "Low: " + str.tostring(sessionLow, "#.##"), 
+                     color=color.new(lineColor, 100), style=label.style_label_up, 
+                     textcolor=lineColor, size=size.small)
+        
+        // Remove old sessions if we exceed the limit
+        while array.size(sessionHighs) > sessionsToShow
+            // Delete old lines
+            if array.size(sessionHighLines) > 0
+                oldHighLine = array.pop(sessionHighLines)
+                line.delete(oldHighLine)
+            if array.size(sessionLowLines) > 0
+                oldLowLine = array.pop(sessionLowLines)
+                line.delete(oldLowLine)
+            
+            // Remove old session data
+            array.pop(sessionHighs)
+            array.pop(sessionLows)
+            array.pop(sessionStartBars)
+            array.pop(sessionEndBars)
+
+// === BACKGROUND HIGHLIGHT ===
+bgcolor(inSession() ? color.new(lineColor, 95) : na, title="Session Background")
+
+// === DEBUG TABLE ===
+if inSession() or sessionActive or array.size(sessionHighs) > 0
+    var table debugTable = table.new(position.top_right, 2, 10, bgcolor=color.white, border_width=1)
+    table.cell(debugTable, 0, 0, "Current Time (ET)", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 0, str.tostring(hour, "00") + ":" + str.tostring(minute, "00"), text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 1, "Session Active", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 1, sessionActive ? "YES" : "NO", text_color=sessionActive ? color.green : color.red, text_size=size.small)
+    table.cell(debugTable, 0, 2, "Current Session High", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 2, not na(sessionHigh) ? str.tostring(sessionHigh, "#.##") : "N/A", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 3, "Current Session Low", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 3, not na(sessionLow) ? str.tostring(sessionLow, "#.##") : "N/A", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 4, "Sessions Stored", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 4, str.tostring(array.size(sessionHighs)), text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 5, "Sessions to Show", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 5, str.tostring(sessionsToShow), text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 6, "Daily VWAP", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 6, not na(dailyVWAP) ? str.tostring(dailyVWAP, "#.##") : "N/A", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 7, "VWAP Volume Sum", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 7, str.tostring(volumeSum, "#"), text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 8, "Last Reset Day", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 8, not na(lastResetDay) ? str.tostring(lastResetDay) : "N/A", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 9, "Current Bar", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 9, str.tostring(bar_index), text_color=color.black, text_size=size.small) 

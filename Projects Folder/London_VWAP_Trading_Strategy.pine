@@ -1,0 +1,342 @@
+//@version=5
+strategy("London VWAP Trading Strategy", overlay=true, max_lines_count=10)
+
+// === USER INPUTS ===
+// Session Times
+sessionStartHour = input.int(3, "Session Start Hour (ET)", minval=0, maxval=23, group="Session Times")
+sessionStartMinute = input.int(0, "Session Start Minute (ET)", minval=0, maxval=59, group="Session Times")
+sessionEndHour = input.int(12, "Session End Hour (ET)", minval=0, maxval=23, group="Session Times")
+sessionEndMinute = input.int(0, "Session End Minute (ET)", minval=0, maxval=59, group="Session Times")
+
+// Trading Settings
+breakoutTicks = input.int(20, "Breakout Distance (x ticks)", minval=1, tooltip="Ticks above session high/below session low for initial breakout", group="Trading Settings")
+vwapDistanceTicks = input.int(10, "VWAP Distance (y ticks)", minval=1, tooltip="Minimum distance from VWAP for entry signal", group="Trading Settings")
+stopLossTicks = input.int(15, "Stop Loss (n ticks)", minval=1, tooltip="Stop loss distance from previous candle high/low", group="Trading Settings")
+trailingStopTicks = input.int(10, "Trailing Stop (z ticks)", minval=1, tooltip="Trailing stop distance when price touches VWAP", group="Trading Settings")
+forceCloseHour = input.int(15, "Force Close Hour (ET)", minval=0, maxval=23, tooltip="Hour to force close all positions", group="Trading Settings")
+forceCloseMinute = input.int(55, "Force Close Minute (ET)", minval=0, maxval=59, tooltip="Minute to force close all positions", group="Trading Settings")
+
+// Display Settings
+sessionsToShow = input.int(2, "Number of Sessions to Show", minval=1, maxval=10, group="Display")
+showSessionLines = input.bool(true, "Show Session Lines", group="Display")
+showVWAP = input.bool(true, "Show VWAP", group="Display")
+lineColor = input.color(color.yellow, "Session Line Color", group="Display")
+vwapColor = input.color(color.purple, "VWAP Color", group="Display")
+
+// === SESSION DETECTION ===
+inSession() =>
+    sessionStart = sessionStartHour * 60 + sessionStartMinute
+    sessionEnd = sessionEndHour * 60 + sessionEndMinute
+    currentTime = hour * 60 + minute
+    
+    if sessionStart < sessionEnd
+        currentTime >= sessionStart and currentTime < sessionEnd
+    else
+        currentTime >= sessionStart or currentTime < sessionEnd
+
+// Check if we can start looking for trades (after session ends)
+canTrade() =>
+    currentTime = hour * 60 + minute
+    tradeStartTime = sessionEndHour * 60 + sessionEndMinute
+    currentTime >= tradeStartTime
+
+// Check if we've reached force close time
+forceCloseTime() =>
+    currentTime = hour * 60 + minute
+    closeTime = forceCloseHour * 60 + forceCloseMinute
+    currentTime >= closeTime
+
+// === VWAP CALCULATION ===
+var float vwapSum = 0.0
+var float volumeSum = 0.0
+var float dailyVWAP = na
+var int lastResetDay = na
+
+vwapResetTime() =>
+    hour == 17 and minute >= 1
+
+currentDay = dayofweek
+if vwapResetTime() and (na(lastResetDay) or currentDay != lastResetDay)
+    vwapSum := 0.0
+    volumeSum := 0.0
+    lastResetDay := currentDay
+
+if na(dailyVWAP) and not na(volume) and volume > 0
+    vwapSum := 0.0
+    volumeSum := 0.0
+
+if not na(volume) and volume > 0
+    typicalPrice = (high + low + close) / 3
+    vwapSum += typicalPrice * volume
+    volumeSum += volume
+    
+    if volumeSum > 0
+        dailyVWAP := vwapSum / volumeSum
+
+plot(showVWAP ? dailyVWAP : na, "Daily VWAP", color=vwapColor, linewidth=2)
+
+// === SESSION TRACKING ===
+var float sessionHigh = na
+var float sessionLow = na
+var int sessionStartBar = na
+var bool sessionActive = false
+
+// Arrays to store multiple sessions
+var sessionHighs = array.new<float>()
+var sessionLows = array.new<float>()
+var sessionStartBars = array.new<int>()
+var sessionEndBars = array.new<int>()
+var sessionHighLines = array.new<line>()
+var sessionLowLines = array.new<line>()
+
+// Detect new session
+newSession = not sessionActive and inSession()
+if newSession
+    sessionHigh := high
+    sessionLow := low
+    sessionStartBar := bar_index
+    sessionActive := true
+
+// Update session high/low
+if sessionActive and inSession()
+    sessionHigh := math.max(sessionHigh, high)
+    sessionLow := math.min(sessionLow, low)
+
+// End session and draw lines
+sessionEnded = sessionActive and not inSession()
+if sessionEnded
+    sessionActive := false
+    
+    // Store completed session
+    if not na(sessionHigh) and not na(sessionLow) and not na(sessionStartBar)
+        // Add new session to arrays
+        array.unshift(sessionHighs, sessionHigh)
+        array.unshift(sessionLows, sessionLow)
+        array.unshift(sessionStartBars, sessionStartBar)
+        array.unshift(sessionEndBars, bar_index)
+        
+        // Draw lines for this session if enabled
+        if showSessionLines
+            highLine = line.new(sessionStartBar, sessionHigh, bar_index, sessionHigh, 
+                               color=lineColor, width=2, extend=extend.right)
+            lowLine = line.new(sessionStartBar, sessionLow, bar_index, sessionLow, 
+                              color=lineColor, width=2, extend=extend.right)
+            
+            array.unshift(sessionHighLines, highLine)
+            array.unshift(sessionLowLines, lowLine)
+        
+        // Remove old sessions if we exceed the limit
+        while array.size(sessionHighs) > sessionsToShow
+            // Delete old lines
+            if showSessionLines and array.size(sessionHighLines) > 0
+                oldHighLine = array.pop(sessionHighLines)
+                line.delete(oldHighLine)
+            if showSessionLines and array.size(sessionLowLines) > 0
+                oldLowLine = array.pop(sessionLowLines)
+                line.delete(oldLowLine)
+            
+            // Remove old session data
+            array.pop(sessionHighs)
+            array.pop(sessionLows)
+            array.pop(sessionStartBars)
+            array.pop(sessionEndBars)
+
+// === TRADING LOGIC ===
+var bool tradeToday = false
+var bool waitingForShortEntry = false
+var bool waitingForLongEntry = false
+var float stopLoss = na
+var bool trailingActive = false
+var float trailingStop = na
+
+// Reset daily trade flag at session start
+if newSession
+    tradeToday := false
+    waitingForShortEntry := false
+    waitingForLongEntry := false
+
+// Convert ticks to price points
+tickSize = syminfo.mintick
+breakoutDistance = breakoutTicks * tickSize
+vwapDistance = vwapDistanceTicks * tickSize
+stopLossDistance = stopLossTicks * tickSize
+
+// Candle identification
+bullishCandle = close > open
+bearishCandle = close < open
+
+// Get the most recent completed session for trading
+completedSessionHigh = array.size(sessionHighs) > 0 ? array.get(sessionHighs, 0) : na
+completedSessionLow = array.size(sessionLows) > 0 ? array.get(sessionLows, 0) : na
+
+// Only look for trades after session ends and if no trade today and before force close time
+if canTrade() and not tradeToday and not forceCloseTime() and not na(completedSessionHigh) and not na(completedSessionLow) and not na(dailyVWAP)
+
+    // === SHORT SETUP DETECTION ===
+    // Step 1: Look for bullish candle closing x ticks above session high
+    if not waitingForShortEntry and not waitingForLongEntry and strategy.position_size == 0
+        if bullishCandle and close > completedSessionHigh + breakoutDistance
+            waitingForShortEntry := true
+
+    // Step 2: After bullish breakout, wait for bearish candle at least y ticks from VWAP
+    if waitingForShortEntry and bearishCandle
+        if close > dailyVWAP + vwapDistance  // Must be above VWAP by y ticks
+            // Take short trade
+            stopLoss := high[1] + stopLossDistance  // SL above previous candle high
+            strategy.entry("Short", strategy.short)
+            tradeToday := true
+            waitingForShortEntry := false
+            trailingActive := false
+            label.new(bar_index, high, "SHORT", color=color.red, style=label.style_label_down, textcolor=color.white)
+
+    // === LONG SETUP DETECTION ===
+    // Step 1: Look for bearish candle closing x ticks below session low
+    if not waitingForLongEntry and not waitingForShortEntry and strategy.position_size == 0
+        if bearishCandle and close < completedSessionLow - breakoutDistance
+            waitingForLongEntry := true
+
+    // Step 2: After bearish breakout, wait for bullish candle at least y ticks from VWAP
+    if waitingForLongEntry and bullishCandle
+        if close < dailyVWAP - vwapDistance  // Must be below VWAP by y ticks
+            // Take long trade
+            stopLoss := low[1] - stopLossDistance  // SL below previous candle low
+            strategy.entry("Long", strategy.long)
+            tradeToday := true
+            waitingForLongEntry := false
+            trailingActive := false
+            label.new(bar_index, low, "LONG", color=color.green, style=label.style_label_up, textcolor=color.white)
+
+// === EXIT LOGIC ===
+// Trailing Stop Activation Logic
+// LONG: When price > VWAP (in profit territory)
+if strategy.position_size > 0 and not trailingActive and not na(dailyVWAP)
+    if close > dailyVWAP  // Price above VWAP = profit for long
+        trailingActive := true
+        trailingStop := close - (trailingStopTicks * tickSize)
+        // Cancel original stop loss and activate trailing stop
+        strategy.cancel("Long SL")
+        strategy.exit("Long Trail", "Long", stop=trailingStop)
+        label.new(bar_index, low, "TRAIL ON", color=color.purple, style=label.style_label_up, textcolor=color.white, size=size.tiny)
+
+// SHORT: When price < VWAP (in profit territory)
+if strategy.position_size < 0 and not trailingActive and not na(dailyVWAP)
+    if close < dailyVWAP  // Price below VWAP = profit for short
+        trailingActive := true
+        trailingStop := close + (trailingStopTicks * tickSize)
+        // Cancel original stop loss and activate trailing stop
+        strategy.cancel("Short SL")
+        strategy.exit("Short Trail", "Short", stop=trailingStop)
+        label.new(bar_index, high, "TRAIL ON", color=color.purple, style=label.style_label_down, textcolor=color.white, size=size.tiny)
+
+// Set initial stop loss only if trailing is not active
+if strategy.position_size != 0 and not na(stopLoss) and not trailingActive
+    if strategy.position_size > 0  // Long position
+        strategy.exit("Long SL", "Long", stop=stopLoss)
+    else  // Short position
+        strategy.exit("Short SL", "Short", stop=stopLoss)
+
+// Update trailing stop when active
+if trailingActive and strategy.position_size > 0
+    newTrailingStop = close - (trailingStopTicks * tickSize)
+    if newTrailingStop > trailingStop  // Only move stop up (more favorable)
+        trailingStop := newTrailingStop
+        strategy.exit("Long Trail", "Long", stop=trailingStop)
+
+if trailingActive and strategy.position_size < 0
+    newTrailingStop = close + (trailingStopTicks * tickSize)
+    if newTrailingStop < trailingStop  // Only move stop down (more favorable)
+        trailingStop := newTrailingStop
+        strategy.exit("Short Trail", "Short", stop=trailingStop)
+
+// === FORCE CLOSE LOGIC ===
+var bool forceClosed = false
+
+// Force close all positions at specified time
+if forceCloseTime() and strategy.position_size != 0 and not forceClosed
+    if strategy.position_size > 0
+        strategy.close("Long", comment="Force Close")
+    else
+        strategy.close("Short", comment="Force Close")
+    
+    // Mark that we've force closed today
+    forceClosed := true
+    
+    // Reset all trading variables
+    stopLoss := na
+    trailingActive := false
+    trailingStop := na
+    waitingForShortEntry := false
+    waitingForLongEntry := false
+    
+    // Add force close label
+    label.new(bar_index, high, "FORCE CLOSE", color=color.orange, style=label.style_label_down, textcolor=color.white, size=size.normal)
+
+// Reset force close flag at session start
+if newSession
+    forceClosed := false
+
+// Reset variables when position closes
+if strategy.position_size == 0 and strategy.position_size[1] != 0
+    stopLoss := na
+    trailingActive := false
+    trailingStop := na
+    waitingForShortEntry := false
+    waitingForLongEntry := false
+
+// === BACKGROUND HIGHLIGHT ===
+bgcolor(inSession() ? color.new(lineColor, 95) : na, title="Session Background")
+bgcolor(canTrade() and not forceCloseTime() ? color.new(color.blue, 98) : na, title="Trading Window")
+bgcolor(forceCloseTime() ? color.new(color.red, 95) : na, title="Force Close Window")
+
+// === DEBUG TABLE ===
+if canTrade() or sessionActive
+    var table debugTable = table.new(position.top_right, 2, 22, bgcolor=color.white, border_width=1)
+    table.cell(debugTable, 0, 0, "Time (ET)", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 0, str.tostring(hour, "00") + ":" + str.tostring(minute, "00"), text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 1, "Completed High", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 1, not na(completedSessionHigh) ? str.tostring(completedSessionHigh, "#.##") : "N/A", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 2, "Completed Low", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 2, not na(completedSessionLow) ? str.tostring(completedSessionLow, "#.##") : "N/A", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 3, "Long Breakout Level", text_color=color.black, text_size=size.small)
+    longBreakoutLevel = not na(completedSessionLow) ? completedSessionLow - breakoutDistance : na
+    table.cell(debugTable, 1, 3, not na(longBreakoutLevel) ? str.tostring(longBreakoutLevel, "#.##") : "N/A", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 4, "Short Breakout Level", text_color=color.black, text_size=size.small)
+    shortBreakoutLevel = not na(completedSessionHigh) ? completedSessionHigh + breakoutDistance : na
+    table.cell(debugTable, 1, 4, not na(shortBreakoutLevel) ? str.tostring(shortBreakoutLevel, "#.##") : "N/A", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 5, "Current Close", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 5, str.tostring(close, "#.##"), text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 6, "Sessions Stored", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 6, str.tostring(array.size(sessionHighs)), text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 7, "Sessions to Show", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 7, str.tostring(sessionsToShow), text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 8, "VWAP", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 8, not na(dailyVWAP) ? str.tostring(dailyVWAP, "#.##") : "N/A", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 9, "Waiting Short", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 9, waitingForShortEntry ? "YES" : "NO", text_color=waitingForShortEntry ? color.orange : color.gray, text_size=size.small)
+    table.cell(debugTable, 0, 10, "Waiting Long", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 10, waitingForLongEntry ? "YES" : "NO", text_color=waitingForLongEntry ? color.orange : color.gray, text_size=size.small)
+    table.cell(debugTable, 0, 11, "Trade Today", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 11, tradeToday ? "YES" : "NO", text_color=tradeToday ? color.red : color.green, text_size=size.small)
+    table.cell(debugTable, 0, 12, "Position", text_color=color.black, text_size=size.small)
+    positionText = strategy.position_size > 0 ? "LONG" : (strategy.position_size < 0 ? "SHORT" : "NONE")
+    table.cell(debugTable, 1, 12, positionText, text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 13, "Stop Loss", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 13, not na(stopLoss) ? str.tostring(stopLoss, "#.##") : "N/A", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 14, "Trailing Active", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 14, trailingActive ? "YES" : "NO", text_color=trailingActive ? color.orange : color.gray, text_size=size.small)
+    table.cell(debugTable, 0, 15, "Candle Type", text_color=color.black, text_size=size.small)
+    candleText = bullishCandle ? "BULLISH" : (bearishCandle ? "BEARISH" : "DOJI")
+    table.cell(debugTable, 1, 15, candleText, text_color=bullishCandle ? color.green : (bearishCandle ? color.red : color.gray), text_size=size.small)
+    table.cell(debugTable, 0, 16, "Can Trade", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 16, canTrade() ? "YES" : "NO", text_color=canTrade() ? color.green : color.red, text_size=size.small)
+    table.cell(debugTable, 0, 17, "Breakout Ticks", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 17, str.tostring(breakoutTicks), text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 18, "Force Close Time", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 18, str.tostring(forceCloseHour, "00") + ":" + str.tostring(forceCloseMinute, "00"), text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 0, 19, "Force Close Active", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 19, forceCloseTime() ? "YES" : "NO", text_color=forceCloseTime() ? color.red : color.green, text_size=size.small)
+    table.cell(debugTable, 0, 20, "Profit Territory", text_color=color.black, text_size=size.small)
+    inProfitTerritory = strategy.position_size > 0 ? (close > dailyVWAP) : (strategy.position_size < 0 ? (close < dailyVWAP) : false)
+    table.cell(debugTable, 1, 20, inProfitTerritory ? "YES" : "NO", text_color=inProfitTerritory ? color.green : color.red, text_size=size.small)
+    table.cell(debugTable, 0, 21, "Trailing Stop Level", text_color=color.black, text_size=size.small)
+    table.cell(debugTable, 1, 21, trailingActive and not na(trailingStop) ? str.tostring(trailingStop, "#.##") : "N/A", text_color=trailingActive ? color.purple : color.gray, text_size=size.small) 
