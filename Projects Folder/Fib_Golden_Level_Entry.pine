@@ -56,6 +56,10 @@ var bool baseDefined = false
 var bool topDefined = false
 var bool allowNewBase = true
 var bool stoppedOut = false
+var int lastTradeBar = na
+var bool tradingDisabled = false  // Disable all trading after stop loss
+var float lastEntryFibLevel = na  // Track last Fibonacci entry level for comparison
+var int lastClosedTradesCount = 0  // Track number of closed trades
 
 // ============================================================================
 // FRACTAL DETECTION
@@ -66,12 +70,10 @@ isRegularFractal(mode) =>
     ret = mode == 1 ? high[4] < high[3] and high[3] < high[2] and high[2] > high[1] and high[1] > high[0] :
         mode == -1 ? low[4] > low[3] and low[3] > low[2] and low[2] < low[1] and low[1] < low[0] : false
 
-// Alternative fractal detection for testing
-botFractalAlt = low[2] < low[1] and low[2] < low[3] and low[1] < low[0] and low[3] < low[4]
-
-// Fractal Detection
+// Fractal Detection - Use alternative for base (more sensitive), regular for top
 topFractal = isRegularFractal(1)   // Red fractals (high points)
 botFractal = isRegularFractal(-1)  // Green fractals (low points)
+botFractalAlt = low[2] < low[1] and low[2] < low[3] and low[1] < low[0] and low[3] < low[4]  // Alternative (more sensitive)
 
 
 
@@ -79,21 +81,52 @@ botFractal = isRegularFractal(-1)  // Green fractals (low points)
 // BASE AND TOP DETECTION
 // ============================================================================
 
-// Check if ADX condition is met
-adxCondition = not useADXFilter or adx > adxThreshold
+// Enhanced trade closure detection using multiple methods
+// Method 1: Position size change
+positionJustClosed = strategy.position_size == 0 and strategy.position_size[1] != 0
 
-// Track if position was stopped out - MUST BE BEFORE ENTRY LOGIC
+// Method 2: Closed trades count increase
+closedTradesCountIncreased = strategy.closedtrades > lastClosedTradesCount
+if closedTradesCountIncreased
+    lastClosedTradesCount := strategy.closedtrades
+
+// Clear market structure when ANY trade closes - require completely fresh structure
+if positionJustClosed or closedTradesCountIncreased
+    // Clear BOTH base and top - strategy must find completely new structure
+    baseDefined := false
+    topDefined := false
+    baseValue := na
+    topValue := na
+    // Cancel any pending entry orders
+    if strategy.position_size == 0
+        strategy.cancel("Fib Entry")
+
+// CRITICAL: Handle stop losses and reset structure
 if strategy.position_size == 0 and strategy.position_size[1] != 0
-    // Check if exit was due to stop loss by comparing last exit price to stop loss level
+    // Check for traditional stop loss
+    isTraditionalStopLoss = false
     if strategy.closedtrades > 0 and not na(baseValue)
         lastExitPrice = strategy.closedtrades.exit_price(strategy.closedtrades - 1)
         stopLossLevel = baseValue - (slBuffer * syminfo.mintick)
-        // More precise stop loss detection
-        if lastExitPrice <= stopLossLevel * 1.002  // Slightly larger tolerance
-            stoppedOut := true
+        lastEntryPrice = strategy.closedtrades.entry_price(strategy.closedtrades - 1)
+        isStopLoss = lastExitPrice <= stopLossLevel * 1.01
+        isQuickLoss = lastExitPrice < lastEntryPrice * 0.995
+        isTraditionalStopLoss = isStopLoss or isQuickLoss
+    
+    // Reset structure for stop losses
+    if isTraditionalStopLoss
+        stoppedOut := true
+        baseDefined := false
+        topDefined := false
+        baseValue := na
+        topValue := na
+        lastTradeBar := bar_index
 
-// Base Detection Logic
-if botFractalAlt and allowNewBase and strategy.position_size == 0
+// Check if ADX condition is met
+adxCondition = not useADXFilter or adx > adxThreshold
+
+// Base Detection Logic - Continue monitoring even with open positions
+if botFractalAlt and allowNewBase
     // Check ADX condition for Base using the alternative fractal bar (offset 2)
     adxConditionBase = not useADXFilter or adx[2] > adxThreshold
     
@@ -102,12 +135,20 @@ if botFractalAlt and allowNewBase and strategy.position_size == 0
     
     if adxConditionBase and emaConditionBase
         // Only assign/update Base if no base exists OR new fractal is lower than current base
-        if na(baseValue) or low[2] < baseValue
+        // After stop loss, only allow new base if it's the first base (na) or significantly different
+        if na(baseValue) or (not stoppedOut and low[2] < baseValue) or (stoppedOut and na(baseValue))
+            // Cancel only entry orders when base changes
+            if strategy.position_size == 0
+                strategy.cancel("Fib Entry")
+            isNewLowerBase = not na(baseValue) and low[2] < baseValue
             baseValue := low[2]  // Use the low from the fractal bar
             baseBar := bar_index[2]  // Use the bar index from the fractal bar
             baseDefined := true
-            topDefined := false  // Reset Top when new lower Base is found
-            stoppedOut := false  // Reset stop loss flag when new lower base is found
+            // Only reset top if this is a significantly lower base
+            if isNewLowerBase
+                topDefined := false  // Reset Top when base moves significantly lower
+                topValue := na
+            lastEntryFibLevel := na  // Reset Fibonacci level tracking
 
 // Plot Base value line when defined
 plot(not na(baseValue) ? baseValue : na, title="Base Value Line", color=color.yellow, style=plot.style_line, linewidth=2)
@@ -124,17 +165,27 @@ if topFractal and baseDefined and allowNewBase
     adxConditionTop = not useADXFilter or adx[2] > adxThreshold
     
     // Check EMA conditions for Top using the fractal bar (offset 2)
-    emaConditionTop = ema9[2] > ema21[2]
+    emaConditionTop = ema9[2] > ema21[2] and ema21[2] > sma50[2]
     
     if adxConditionTop and emaConditionTop
         if not topDefined
             topValue := high[2]  // Use the high from the fractal bar
             topBar := bar_index[2]  // Use the bar index from the fractal bar
             topDefined := true
-        else if high[2] > topValue and strategy.position_size == 0
+            // Cancel only entry orders when new top is defined
+            if strategy.position_size == 0
+                strategy.cancel("Fib Entry")
+            lastEntryFibLevel := na  // Reset Fibonacci level tracking
+            // Only reset stoppedOut when BOTH base and top are newly defined after stop loss
+            if baseDefined and stoppedOut
+                stoppedOut := false  // Reset stop loss flag only when fresh structure is complete
+        else if high[2] > topValue and not stoppedOut
+            // Cancel only entry orders when top updates
+            if strategy.position_size == 0
+                strategy.cancel("Fib Entry")
             topValue := high[2]  // Use the high from the fractal bar
             topBar := bar_index[2]  // Use the bar index from the fractal bar
-            stoppedOut := false  // Reset stop loss flag when new higher top is found
+            lastEntryFibLevel := na  // Reset Fibonacci level tracking
 
 // ============================================================================
 // FIBONACCI CALCULATIONS
@@ -152,14 +203,19 @@ entryFibLevel = entryLevel == "0.618 Fib" ? fib618 : fib50
 // TRADE MANAGEMENT
 // ============================================================================
 
-// Cancel existing limit order if new Top is defined
-if topDefined and strategy.position_size == 0
-    strategy.cancel_all()
+// Only cancel entry orders if Fibonacci level has changed, preserve exit orders
+if baseDefined and topDefined and not na(entryFibLevel) and strategy.position_size == 0 and not na(lastEntryFibLevel)
+    if math.abs(entryFibLevel - lastEntryFibLevel) > syminfo.mintick
+        strategy.cancel("Fib Entry")  // Cancel only entry orders, not exit orders
 
-// Place limit order at selected fibonacci level
-if baseDefined and topDefined and strategy.position_size == 0 and not na(entryFibLevel) and not stoppedOut
+// Place limit order at selected fibonacci level with cooldown period
+cooldownPeriod = 5  // Standard cooldown between trades
+cooldownOK = na(lastTradeBar) or (bar_index - lastTradeBar) >= cooldownPeriod
+
+// Entry condition - requires fresh base after any trade closure
+if baseDefined and topDefined and strategy.position_size == 0 and not na(entryFibLevel) and not stoppedOut and cooldownOK
     // Calculate position size
-    qty = positionType == "Fixed Lot" ? fixedLotSize : fixedUSDSize / close
+    qty = positionType == "Fixed Lot" ? fixedLotSize : fixedUSDSize / entryFibLevel
     
     // Calculate stop loss with buffer
     stopLoss = baseValue - (slBuffer * syminfo.mintick)
@@ -174,25 +230,39 @@ if baseDefined and topDefined and strategy.position_size == 0 and not na(entryFi
     
     strategy.entry("Fib Entry", strategy.long, qty=qty, limit=entryFibLevel, comment=entryComment)
     strategy.exit("Fib Exit", "Fib Entry", limit=takeProfit, stop=stopLoss)
+    lastEntryFibLevel := entryFibLevel  // Track the Fibonacci level used for this order
+
+// Ensure exit orders exist for open positions (in case they were cancelled)
+if strategy.position_size != 0 and baseDefined and topDefined
+    currentStopLoss = baseValue - (slBuffer * syminfo.mintick)
+    currentTakeProfit = tpType == "0.236 Fib" ? fib236 : 
+                       tpType == "Top Value" ? topValue : 
+                       topValue + (tpTicks * syminfo.mintick)
+    
+    // Re-establish exit orders if they don't exist
+    strategy.exit("Fib Exit", "Fib Entry", limit=currentTakeProfit, stop=currentStopLoss)
 
 // Force close at 15:55 Eastern Time
 if timeToClose and strategy.position_size != 0
     strategy.close_all("Force Close 15:55")
 
-// Simple daily reset: Clear base and top ONCE when 15:55 starts (not continuously)
-if timeToClose and not timeToClose[1]
+// Consolidated reset logic: Daily reset or force close reset
+shouldReset = (dayofweek != dayofweek[1] and dayofweek != 1) or (timeToClose and not timeToClose[1])
+if shouldReset
     baseValue := na
     topValue := na
     baseDefined := false
     topDefined := false
-    stoppedOut := false  // Reset stop loss flag on daily reset
+    stoppedOut := false
+    lastTradeBar := na
+    lastEntryFibLevel := na  // Reset Fibonacci level tracking on daily reset
+    lastClosedTradesCount := 0  // Reset closed trades count on daily reset
 
-// Reset Base and Top after normal trade closes
-if strategy.position_size == 0 and strategy.position_size[1] != 0
+// ONLY reset flags after stop loss - preserve Base/Top for profitable trades
+if strategy.position_size == 0 and strategy.position_size[1] != 0 and stoppedOut
     baseDefined := false
     topDefined := false
-    baseValue := na
-    topValue := na
+    // Keep baseValue and topValue for reference, only reset flags
 
 // ============================================================================
 // PLOTTING
@@ -206,15 +276,11 @@ plotshape(topFractal, title='Top Fractals', style=shape.triangledown,
 
 // Plot Base markers
 plotshape(baseDefined and bar_index == baseBar, title='Base Marker', style=shape.triangleup,
-          location=location.belowbar, color=color.yellow, size=size.tiny)
-plotshape(baseDefined and bar_index == baseBar and low[2] < baseValue, title='New Base Marker', style=shape.triangleup,
-          location=location.belowbar, color=color.teal, size=size.tiny)
+          location=location.belowbar, color=color.yellow, size=size.small)
 
 // Plot Top markers
 plotshape(topDefined and bar_index == topBar, title='Top Marker', style=shape.triangledown,
-          location=location.abovebar, color=color.yellow, size=size.tiny)
-plotshape(topDefined and bar_index == topBar and high[2] > topValue, title='New Top Marker', style=shape.triangledown,
-          location=location.abovebar, color=color.teal, size=size.tiny)
+          location=location.abovebar, color=color.yellow, size=size.small)
 
 // Plot selected entry fibonacci level
 plot(baseDefined and topDefined and entryLevel == "0.618 Fib" ? fib618 : na, title="0.618 Fib Entry Level", color=color.white, style=plot.style_linebr, linewidth=2)
@@ -227,7 +293,7 @@ plot(baseDefined and topDefined and entryLevel == "0.50 Fib" ? fib50 : na, title
 // ============================================================================
 
 // Create debug table
-var table debugTable = table.new(position.top_right, 2, 12, bgcolor=color.black, border_width=1)
+var table debugTable = table.new(position.top_right, 2, 19, bgcolor=color.black, border_width=1)
 
 // Update table data
 if barstate.islast
@@ -267,3 +333,29 @@ if barstate.islast
     
     table.cell(debugTable, 0, 11, "Stopped Out", text_color=color.white, bgcolor=color.gray)
     table.cell(debugTable, 1, 11, stoppedOut ? "YES" : "NO", text_color=color.white, bgcolor=color.gray)
+    
+    cooldownBars = na(lastTradeBar) ? 0 : bar_index - lastTradeBar
+    table.cell(debugTable, 0, 12, "Cooldown Bars", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 12, str.tostring(cooldownBars), text_color=color.white, bgcolor=color.gray)
+    
+    table.cell(debugTable, 0, 13, "Structure Reset", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 13, (not baseDefined or not topDefined) ? "YES" : "NO", text_color=(not baseDefined or not topDefined) ? color.orange : color.green, bgcolor=color.gray)
+    
+    table.cell(debugTable, 0, 14, "Last Fib Level", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 14, not na(lastEntryFibLevel) ? str.tostring(lastEntryFibLevel, "#.####") : "N/A", text_color=color.white, bgcolor=color.gray)
+    
+    // Entry condition debugging - structure based
+    entryConditionMet = baseDefined and topDefined and strategy.position_size == 0 and not na(entryFibLevel) and not stoppedOut and cooldownOK
+    
+    table.cell(debugTable, 0, 15, "Entry Condition", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 15, entryConditionMet ? "MET" : "NOT MET", text_color=entryConditionMet ? color.green : color.red, bgcolor=color.gray)
+    
+    table.cell(debugTable, 0, 16, "Cooldown OK", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 16, cooldownOK ? "YES" : "NO", text_color=cooldownOK ? color.green : color.red, bgcolor=color.gray)
+    
+    // Essential debugging only
+    table.cell(debugTable, 0, 17, "Entry Condition", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 17, entryConditionMet ? "MET" : "NOT MET", text_color=entryConditionMet ? color.green : color.red, bgcolor=color.gray)
+    
+    table.cell(debugTable, 0, 18, "Fresh Structure", text_color=color.white, bgcolor=color.gray)
+    table.cell(debugTable, 1, 18, (baseDefined and topDefined) ? "READY" : "WAITING", text_color=(baseDefined and topDefined) ? color.green : color.orange, bgcolor=color.gray)
