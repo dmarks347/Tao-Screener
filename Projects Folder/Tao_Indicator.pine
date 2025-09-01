@@ -42,6 +42,10 @@ bool show_signals = input.bool(true, "Show Entry Signals", group="Entry Signals"
 color long_signal_color = input.color(color.green, "Long Signal Color", inline="signal_colors", group="Entry Signals")
 color short_signal_color = input.color(color.red, "Short Signal Color", inline="signal_colors", group="Entry Signals")
 
+// Additional Arrow Signal Settings
+bool show_arrow_signals = input.bool(true, "Show Arrow Signals", group="Entry Signals", tooltip="Yellow arrows appear on daily close when specific reversal conditions are met")
+color arrow_signal_color = input.color(color.yellow, "Arrow Signal Color", group="Entry Signals")
+
 // }
 
 // CALCULATIONS ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
@@ -152,6 +156,39 @@ bool short_signal = short_signal_conditions and (na(last_short_signal_bar) or ba
 if short_signal
     last_short_signal_bar := bar_index
 
+// Additional Daily Close Arrow Signals
+// Bullish Arrow Conditions:
+// 1. EMA alignment must be bullish (green)
+// 2. Stochastic K <= 40
+// 3. ADX >= 20
+// 4. Previous day RSI(2) <= 10
+// 5. Current day RSI(2) > 10
+// 6. Current day close > open
+// 7. Current day close > previous day high
+bool bullish_arrow_conditions = bullish_alignment and 
+                               signal_stoch_k <= 40 and 
+                               adx_value >= 20 and 
+                               signal_rsi[1] <= 10 and 
+                               signal_rsi > 10 and 
+                               close > open and 
+                               close > high[1]
+
+// Bearish Arrow Conditions:
+// 1. EMA alignment must be bearish (red)
+// 2. Stochastic K >= 60
+// 3. ADX >= 20
+// 4. Previous day RSI(2) >= 90
+// 5. Current day RSI(2) < 90
+// 6. Current day close < open
+// 7. Current day close < previous day low
+bool bearish_arrow_conditions = bearish_alignment and 
+                                signal_stoch_k >= 60 and 
+                                adx_value >= 20 and 
+                                signal_rsi[1] >= 90 and 
+                                signal_rsi < 90 and 
+                                close < open and 
+                                close < low[1]
+
 // }
 
 // PLOTS ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
@@ -256,11 +293,30 @@ plotshape(
     title="Short Signal"
 )
 
+// Plot Additional Daily Close Arrow Signals
+plotshape(
+    series=show_signals and show_arrow_signals and bullish_arrow_conditions,
+    style=shape.arrowup,
+    location=location.abovebar,
+    color=arrow_signal_color,
+    size=size.small,
+    title="Bullish Arrow Signal"
+)
+
+plotshape(
+    series=show_signals and show_arrow_signals and bearish_arrow_conditions,
+    style=shape.arrowdown,
+    location=location.belowbar,
+    color=arrow_signal_color,
+    size=size.small,
+    title="Bearish Arrow Signal"
+)
+
 // }
 
 // TABLE FOR DEBUG INFO ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
 if barstate.islast
-    var table info_table = table.new(position.top_right, 2, 12, bgcolor=color.white, border_width=1, frame_width=1, frame_color=color.black)
+    var table info_table = table.new(position.top_right, 2, 16, bgcolor=color.white, border_width=1, frame_width=1, frame_color=color.black)
     
     table.cell(info_table, 0, 0, "Tao Indicator", text_color=color.black, bgcolor=color.gray, text_size=size.normal)
     table.cell(info_table, 1, 0, "Status", text_color=color.black, bgcolor=color.gray, text_size=size.normal)
@@ -311,5 +367,24 @@ if barstate.islast
     
     table.cell(info_table, 0, 11, "RSI High Count", text_color=color.black, bgcolor=color.gray)
     table.cell(info_table, 1, 11, str.tostring(rsi_high_count), text_color=color.black)
+    
+    // Additional Arrow Signal Info
+    table.cell(info_table, 0, 12, "Bullish Arrow", text_color=color.black, bgcolor=color.gray)
+    bullish_arrow_text = bullish_arrow_conditions ? "YES ▲" : "NO"
+    table.cell(info_table, 1, 12, bullish_arrow_text, text_color=arrow_signal_color, text_size=size.normal)
+    
+    table.cell(info_table, 0, 13, "Bearish Arrow", text_color=color.black, bgcolor=color.gray)
+    bearish_arrow_text = bearish_arrow_conditions ? "YES ▼" : "NO"
+    table.cell(info_table, 1, 13, bearish_arrow_text, text_color=arrow_signal_color, text_size=size.normal)
+    
+    // Debug Bullish Arrow Conditions
+    table.cell(info_table, 0, 14, "Bull Arrow Debug", text_color=color.black, bgcolor=color.gray)
+    bull_arrow_debug = str.tostring(bullish_alignment ? 1 : 0) + "|" + str.tostring(signal_stoch_k <= 40 ? 1 : 0) + "|" + str.tostring(adx_value >= 20 ? 1 : 0) + "|" + str.tostring(signal_rsi[1] <= 10 ? 1 : 0) + "|" + str.tostring(signal_rsi > 10 ? 1 : 0) + "|" + str.tostring(close > open ? 1 : 0) + "|" + str.tostring(close > high[1] ? 1 : 0)
+    table.cell(info_table, 1, 14, bull_arrow_debug, text_color=color.black, text_size=size.small)
+    
+    // Debug Bearish Arrow Conditions
+    table.cell(info_table, 0, 15, "Bear Arrow Debug", text_color=color.black, bgcolor=color.gray)
+    bear_arrow_debug = str.tostring(bearish_alignment ? 1 : 0) + "|" + str.tostring(signal_stoch_k >= 60 ? 1 : 0) + "|" + str.tostring(adx_value >= 20 ? 1 : 0) + "|" + str.tostring(signal_rsi[1] >= 90 ? 1 : 0) + "|" + str.tostring(signal_rsi < 90 ? 1 : 0) + "|" + str.tostring(close < open ? 1 : 0) + "|" + str.tostring(close < low[1] ? 1 : 0)
+    table.cell(info_table, 1, 15, bear_arrow_debug, text_color=color.black, text_size=size.small)
 
 // } 
