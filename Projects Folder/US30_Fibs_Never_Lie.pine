@@ -68,14 +68,19 @@ else
     // Overnight session (e.g., 11:30 PM to 7:30 AM next day Eastern = 6:30 PM to 2:30 AM UTC)
     is_ny_session := current_minutes >= ny_start_utc_minutes or current_minutes < ny_end_utc_minutes
 
-// Determine bullish/bearish bias at NY session start
+// Determine bullish/bearish bias - updates every 5 minutes during NY session
 var string bias_5m = "N/A"
 var string bias_3m = "N/A"
 
-// Check bias at NY session start
-if is_ny_session and not is_ny_session[1]  // NY session just started
+// Check bias every 5 minutes during NY session
+if is_ny_session
+    // Update bias every 5 minutes (since this is a 5-minute chart)
     bias_5m := ema_100_5m > ema_200_5m ? "BULLISH" : "BEARISH"
     bias_3m := ema_100_3m > ema_200_3m ? "BULLISH" : "BEARISH"
+else
+    // Reset bias when outside NY session
+    bias_5m := "N/A"
+    bias_3m := "N/A"
 
 // }
 
