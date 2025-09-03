@@ -1,0 +1,127 @@
+//DMarks347 - US30 Fibs Never Lie-V2, V1 EMAs and bullish/bearish indicator working 
+//@version=5
+indicator("US30 FNL- V2", shorttitle="US30 Fibs", overlay=true)
+
+// INPUTS ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+// EMA Settings
+int ema_100_length = input.int(100, "EMA 100 Length", minval=1, group="EMA Settings")
+int ema_200_length = input.int(200, "EMA 200 Length", minval=1, group="EMA Settings")
+
+// Visual Settings
+color ema_100_5m_color = input.color(color.white, "5M EMA 100 Color", group="Visual Settings")
+color ema_200_5m_color = input.color(color.red, "5M EMA 200 Color", group="Visual Settings")
+color ema_100_3m_color = input.color(color.white, "3M EMA 100 Color", group="Visual Settings")
+color ema_200_3m_color = input.color(color.red, "3M EMA 200 Color", group="Visual Settings")
+
+int ema_100_linewidth = input.int(2, "EMA 100 Line Width", minval=1, maxval=5, group="Visual Settings")
+int ema_200_linewidth = input.int(2, "EMA 200 Line Width", minval=1, maxval=5, group="Visual Settings")
+
+// Show/Hide Toggles
+bool show_5m_emas = input.bool(true, "Show 5-Minute EMAs", group="Display Options")
+bool show_3m_emas = input.bool(true, "Show 3-Minute EMAs", group="Display Options")
+
+// New York Session Settings
+bool show_ny_session = input.bool(true, "Show New York Session Background", group="New York Session")
+int ny_start_hour = input.int(7, "NY Start Hour (Eastern)", minval=0, maxval=23, group="New York Session")
+int ny_start_minute = input.int(00, "NY Start Minute", minval=0, maxval=59, group="New York Session")
+int ny_end_hour = input.int(16, "NY End Hour (Eastern)", minval=0, maxval=23, group="New York Session")
+int ny_end_minute = input.int(00, "NY End Minute", minval=0, maxval=59, group="New York Session")
+color ny_session_color = input.color(color.new(color.blue, 90), "NY Session Background Color", group="New York Session")
+
+// }
+
+// CALCULATIONS ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+// 5-Minute Timeframe EMAs (current chart timeframe)
+float ema_100_5m = ta.ema(close, ema_100_length)
+float ema_200_5m = ta.ema(close, ema_200_length)
+
+// 3-Minute Timeframe EMAs (calculated on 3M, plotted on 5M)
+float ema_100_3m = request.security(syminfo.tickerid, "3", ta.ema(close, ema_100_length))
+float ema_200_3m = request.security(syminfo.tickerid, "3", ta.ema(close, ema_200_length))
+
+// New York Session Logic
+// Convert Eastern time to UTC (Eastern is UTC-5 during standard time, UTC-4 during daylight saving)
+// For simplicity, we'll use UTC-5 (standard time) - user can adjust if needed
+int eastern_offset = 0
+
+// Calculate UTC times for NY session
+int ny_start_utc_hour = (ny_start_hour + eastern_offset + 24) % 24
+int ny_end_utc_hour = (ny_end_hour + eastern_offset + 24) % 24
+
+// Check if current time is within NY session
+bool is_ny_session = false
+
+// Get current time in exchange timezone (usually UTC)
+// Note: Pine Script hour/minute functions use the exchange's timezone, which may not be UTC
+int current_hour = hour
+int current_minute = minute
+
+// Convert current time to minutes since midnight for easier comparison
+int current_minutes = current_hour * 60 + current_minute
+int ny_start_utc_minutes = ny_start_utc_hour * 60 + ny_start_minute
+int ny_end_utc_minutes = ny_end_utc_hour * 60 + ny_end_minute
+
+if ny_start_utc_minutes < ny_end_utc_minutes
+    // Same day session (e.g., 7:30 AM to 3:30 PM Eastern = 2:30 AM to 10:30 AM UTC)
+    is_ny_session := current_minutes >= ny_start_utc_minutes and current_minutes < ny_end_utc_minutes
+else
+    // Overnight session (e.g., 11:30 PM to 7:30 AM next day Eastern = 6:30 PM to 2:30 AM UTC)
+    is_ny_session := current_minutes >= ny_start_utc_minutes or current_minutes < ny_end_utc_minutes
+
+// Determine bullish/bearish bias at NY session start
+var string bias_5m = "N/A"
+var string bias_3m = "N/A"
+
+// Check bias at NY session start
+if is_ny_session and not is_ny_session[1]  // NY session just started
+    bias_5m := ema_100_5m > ema_200_5m ? "BULLISH" : "BEARISH"
+    bias_3m := ema_100_3m > ema_200_3m ? "BULLISH" : "BEARISH"
+
+// }
+
+// PLOTS ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+// Plot 5-Minute EMAs
+plot(show_5m_emas ? ema_100_5m : na, color=ema_100_5m_color, linewidth=ema_100_linewidth, title="5M EMA 100", style=plot.style_line)
+plot(show_5m_emas ? ema_200_5m : na, color=ema_200_5m_color, linewidth=ema_200_linewidth, title="5M EMA 200", style=plot.style_line)
+
+// Plot 3-Minute EMAs (step lines for visual distinction)
+plot(show_3m_emas ? ema_100_3m : na, color=ema_100_3m_color, linewidth=ema_100_linewidth, title="3M EMA 100", style=plot.style_circles)
+plot(show_3m_emas ? ema_200_3m : na, color=ema_200_3m_color, linewidth=ema_200_linewidth, title="3M EMA 200", style=plot.style_circles)
+
+
+// Plot New York Session Background
+bgcolor(show_ny_session and is_ny_session ? ny_session_color : na, title="New York Session Background")
+
+// }
+
+// TABLE FOR DEBUG INFO ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
+if barstate.islast
+    var table info_table = table.new(position.top_right, 2, 8, bgcolor=color.white, border_width=1, frame_width=1, frame_color=color.black)
+    
+    table.cell(info_table, 0, 0, "5M EMA 100", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 0, str.tostring(ema_100_5m, "#.##"), text_color=ema_100_5m_color)
+    
+    table.cell(info_table, 0, 1, "5M EMA 200", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 1, str.tostring(ema_200_5m, "#.##"), text_color=ema_200_5m_color)
+    
+    table.cell(info_table, 0, 2, "5M Bias", text_color=color.black, bgcolor=color.gray)
+    bias_5m_color = bias_5m == "BULLISH" ? color.green : bias_5m == "BEARISH" ? color.red : color.gray
+    table.cell(info_table, 1, 2, bias_5m, text_color=bias_5m_color, text_size=size.normal)
+    
+    table.cell(info_table, 0, 3, "3M EMA 100", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 3, str.tostring(ema_100_3m, "#.##"), text_color=ema_100_3m_color)
+    
+    table.cell(info_table, 0, 4, "3M EMA 200", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 4, str.tostring(ema_200_3m, "#.##"), text_color=ema_200_3m_color)
+    
+    table.cell(info_table, 0, 5, "3M Bias", text_color=color.black, bgcolor=color.gray)
+    bias_3m_color = bias_3m == "BULLISH" ? color.green : bias_3m == "BEARISH" ? color.red : color.gray
+    table.cell(info_table, 1, 5, bias_3m, text_color=bias_3m_color, text_size=size.normal)
+    
+    table.cell(info_table, 0, 6, "NY Start ET", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 6, str.tostring(ny_start_hour) + ":" + str.tostring(ny_start_minute, "00"), text_color=color.green)
+    
+    table.cell(info_table, 0, 7, "NY End ET", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 1, 7, str.tostring(ny_end_hour) + ":" + str.tostring(ny_end_minute, "00"), text_color=color.green)
+
+// } 
