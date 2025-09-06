@@ -28,6 +28,9 @@ int ny_end_hour = input.int(16, "NY End Hour (Eastern)", minval=0, maxval=23, gr
 int ny_end_minute = input.int(00, "NY End Minute", minval=0, maxval=59, group="New York Session")
 color ny_session_color = input.color(color.new(color.blue, 90), "NY Session Background Color", group="New York Session")
 
+// Pre-Market Reset Settings
+float reset_threshold = input.float(10.0, "Reset Threshold (Points)", minval=1.0, group="Pre-Market Settings")
+
 // }
 
 // CALCULATIONS ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
@@ -68,19 +71,115 @@ else
     // Overnight session (e.g., 11:30 PM to 7:30 AM next day Eastern = 6:30 PM to 2:30 AM UTC)
     is_ny_session := current_minutes >= ny_start_utc_minutes or current_minutes < ny_end_utc_minutes
 
-// Determine bullish/bearish bias - updates every 5 minutes during NY session
+// Determine bullish/bearish bias and price position - updates every 5 minutes during NY session
 var string bias_5m = "N/A"
 var string bias_3m = "N/A"
+var string price_position = "N/A"
 
-// Check bias every 5 minutes during NY session
+// Pre-Market Reset Variables
+var string reset_direction = "NONE"  // "BULLISH", "BEARISH", or "NONE"
+var bool criteria_1 = false
+var bool criteria_2 = false
+var bool criteria_3 = false
+var bool pre_market_reset = false
+var int cross_bar = na
+var bool monitoring_pullback = false
+
+// Helper function to get highest and lowest EMA values
+get_highest_ema() =>
+    math.max(math.max(ema_100_5m, ema_200_5m), math.max(ema_100_3m, ema_200_3m))
+
+get_lowest_ema() =>
+    math.min(math.min(ema_100_5m, ema_200_5m), math.min(ema_100_3m, ema_200_3m))
+
+// Pre-Market Reset Logic
+// Step 1: Check at 12:00 AM (midnight) - only if not already set today
+if hour == 0 and minute == 0 and reset_direction == "NONE"
+    criteria_2 := false  // Reset criteria 2 & 3 for fresh analysis
+    criteria_3 := false
+    cross_bar := na
+    monitoring_pullback := false
+    
+    if close < ema_100_5m and close < ema_200_5m and close < ema_100_3m and close < ema_200_3m
+        reset_direction := "BULLISH"
+        criteria_1 := true
+    else if close > ema_100_5m and close > ema_200_5m and close > ema_100_3m and close > ema_200_3m
+        reset_direction := "BEARISH"
+        criteria_1 := true
+    else
+        reset_direction := "MIXED"
+        criteria_1 := false
+
+// Step 2: Check at 2:00 AM if mixed at midnight - only if criteria 1 not met
+if hour == 2 and minute == 0 and reset_direction == "MIXED" and not criteria_1
+    if close < ema_100_5m and close < ema_200_5m and close < ema_100_3m and close < ema_200_3m
+        reset_direction := "BULLISH"
+        criteria_1 := true
+    else if close > ema_100_5m and close > ema_200_5m and close > ema_100_3m and close > ema_200_3m
+        reset_direction := "BEARISH"
+        criteria_1 := true
+    else
+        criteria_1 := false
+
+// Steps 3-6: Monitor for crosses and pullbacks
+if criteria_1 and not criteria_2
+    if reset_direction == "BULLISH"
+        // Step 3: Check for bullish cross (close above highest EMA + threshold)
+        if close > (get_highest_ema() + reset_threshold)
+            criteria_2 := true
+            cross_bar := bar_index
+            monitoring_pullback := true
+            criteria_3 := true  // Start assuming no pullback
+    else if reset_direction == "BEARISH"
+        // Step 5: Check for bearish cross (close below lowest EMA - threshold)
+        if close < (get_lowest_ema() - reset_threshold)
+            criteria_2 := true
+            cross_bar := bar_index
+            monitoring_pullback := true
+            criteria_3 := true  // Start assuming no pullback
+
+// Steps 4&6: Monitor for EMA touches after cross
+if monitoring_pullback and criteria_2 and not is_ny_session
+    if reset_direction == "BULLISH"
+        // Step 4: Check if price touched EMAs after bullish cross
+        if low <= get_highest_ema()
+            criteria_3 := false
+    else if reset_direction == "BEARISH"
+        // Step 6: Check if price touched EMAs after bearish cross
+        if high >= get_lowest_ema()
+            criteria_3 := false
+
+// Final Pre-Market Reset determination
+pre_market_reset := criteria_1 and criteria_2 and criteria_3
+
+// Reset all criteria at 17:00 (5 PM) for fresh daily analysis
+if hour == 17 and minute == 0
+    reset_direction := "NONE"
+    criteria_1 := false
+    criteria_2 := false
+    criteria_3 := false
+    pre_market_reset := false
+    cross_bar := na
+    monitoring_pullback := false
+
+// Check bias and price position every 5 minutes during NY session
 if is_ny_session
     // Update bias every 5 minutes (since this is a 5-minute chart)
     bias_5m := ema_100_5m > ema_200_5m ? "BULLISH" : "BEARISH"
     bias_3m := ema_100_3m > ema_200_3m ? "BULLISH" : "BEARISH"
+    
+    // Update price position relative to all 4 EMAs
+    if close > ema_100_5m and close > ema_200_5m and close > ema_100_3m and close > ema_200_3m
+        price_position := "BULLISH"
+    else if close < ema_100_5m and close < ema_200_5m and close < ema_100_3m and close < ema_200_3m
+        price_position := "BEARISH"
+    else
+        price_position := "NOT DETERMINED"
 else
-    // Reset bias when outside NY session
+    // Reset bias and price position when outside NY session
     bias_5m := "N/A"
     bias_3m := "N/A"
+    price_position := "N/A"
 
 // }
 
@@ -101,32 +200,43 @@ bgcolor(show_ny_session and is_ny_session ? ny_session_color : na, title="New Yo
 
 // TABLE FOR DEBUG INFO ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――{
 if barstate.islast
-    var table info_table = table.new(position.top_right, 2, 8, bgcolor=color.white, border_width=1, frame_width=1, frame_color=color.black)
+    var table info_table = table.new(position.top_right, 2, 9, bgcolor=color.white, border_width=1, frame_width=1, frame_color=color.black)
     
-    table.cell(info_table, 0, 0, "5M EMA 100", text_color=color.black, bgcolor=color.gray)
-    table.cell(info_table, 1, 0, str.tostring(ema_100_5m, "#.##"), text_color=ema_100_5m_color)
-    
-    table.cell(info_table, 0, 1, "5M EMA 200", text_color=color.black, bgcolor=color.gray)
-    table.cell(info_table, 1, 1, str.tostring(ema_200_5m, "#.##"), text_color=ema_200_5m_color)
-    
-    table.cell(info_table, 0, 2, "5M Bias", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 0, 0, "5M Bias", text_color=color.black, bgcolor=color.gray)
     bias_5m_color = bias_5m == "BULLISH" ? color.green : bias_5m == "BEARISH" ? color.red : color.gray
-    table.cell(info_table, 1, 2, bias_5m, text_color=bias_5m_color, text_size=size.normal)
+    table.cell(info_table, 1, 0, bias_5m, text_color=bias_5m_color, text_size=size.normal)
     
-    table.cell(info_table, 0, 3, "3M EMA 100", text_color=color.black, bgcolor=color.gray)
-    table.cell(info_table, 1, 3, str.tostring(ema_100_3m, "#.##"), text_color=ema_100_3m_color)
-    
-    table.cell(info_table, 0, 4, "3M EMA 200", text_color=color.black, bgcolor=color.gray)
-    table.cell(info_table, 1, 4, str.tostring(ema_200_3m, "#.##"), text_color=ema_200_3m_color)
-    
-    table.cell(info_table, 0, 5, "3M Bias", text_color=color.black, bgcolor=color.gray)
+    table.cell(info_table, 0, 1, "3M Bias", text_color=color.black, bgcolor=color.gray)
     bias_3m_color = bias_3m == "BULLISH" ? color.green : bias_3m == "BEARISH" ? color.red : color.gray
-    table.cell(info_table, 1, 5, bias_3m, text_color=bias_3m_color, text_size=size.normal)
+    table.cell(info_table, 1, 1, bias_3m, text_color=bias_3m_color, text_size=size.normal)
     
-    table.cell(info_table, 0, 6, "NY Start ET", text_color=color.black, bgcolor=color.gray)
-    table.cell(info_table, 1, 6, str.tostring(ny_start_hour) + ":" + str.tostring(ny_start_minute, "00"), text_color=color.green)
+    table.cell(info_table, 0, 2, "Price Position", text_color=color.black, bgcolor=color.gray)
+    price_position_color = price_position == "BULLISH" ? color.green : price_position == "BEARISH" ? color.red : color.gray
+    table.cell(info_table, 1, 2, price_position, text_color=price_position_color, text_size=size.normal)
     
-    table.cell(info_table, 0, 7, "NY End ET", text_color=color.black, bgcolor=color.gray)
-    table.cell(info_table, 1, 7, str.tostring(ny_end_hour) + ":" + str.tostring(ny_end_minute, "00"), text_color=color.green)
+    table.cell(info_table, 0, 3, "Trade Status", text_color=color.black, bgcolor=color.gray)
+    var string trade_status = "N/A"
+    table.cell(info_table, 1, 3, trade_status, text_color=color.gray, text_size=size.normal)
+    
+    table.cell(info_table, 0, 4, "Pre-Market Reset", text_color=color.black, bgcolor=color.gray)
+    reset_color = pre_market_reset ? color.green : color.red
+    table.cell(info_table, 1, 4, pre_market_reset ? "TRUE" : "FALSE", text_color=reset_color, text_size=size.normal)
+    
+    // Criteria debugging
+    table.cell(info_table, 0, 5, "Reset Direction", text_color=color.black, bgcolor=color.gray)
+    direction_color = reset_direction == "BULLISH" ? color.green : reset_direction == "BEARISH" ? color.red : color.gray
+    table.cell(info_table, 1, 5, reset_direction, text_color=direction_color, text_size=size.small)
+    
+    table.cell(info_table, 0, 6, "Criteria 1 (Position)", text_color=color.black, bgcolor=color.gray)
+    criteria1_color = criteria_1 ? color.green : color.red
+    table.cell(info_table, 1, 6, criteria_1 ? "MET" : "NOT MET", text_color=criteria1_color, text_size=size.small)
+    
+    table.cell(info_table, 0, 7, "Criteria 2 (Cross)", text_color=color.black, bgcolor=color.gray)
+    criteria2_color = criteria_2 ? color.green : color.red
+    table.cell(info_table, 1, 7, criteria_2 ? "MET" : "NOT MET", text_color=criteria2_color, text_size=size.small)
+    
+    table.cell(info_table, 0, 8, "Criteria 3 (No Touch)", text_color=color.black, bgcolor=color.gray)
+    criteria3_color = criteria_3 ? color.green : color.red
+    table.cell(info_table, 1, 8, criteria_3 ? "MET" : "NOT MET", text_color=criteria3_color, text_size=size.small)
 
 // } 
